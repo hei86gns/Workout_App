@@ -497,7 +497,8 @@
     </div>
   <div class="action-row">
     <button class="btn btn-secondary" id="btnOpenSettings">⚙ 設定</button>
-    <button class="btn btn-secondary" id="btnExportData">📤 データをエクスポート</button>
+    <button class="btn btn-secondary" id="btnExportData">📤 JSONエクスポート</button>
+    <button class="btn btn-secondary" id="btnExportCSV">📊 CSVエクスポート</button>
   </div>
   <div class="action-row">
     <button class="btn btn-primary" id="btnAddExercise">＋ 種目を追加</button>
@@ -1077,6 +1078,44 @@ function exportAllData() {
   link.click();
   document.body.removeChild(link);
   showToast('データをエクスポートしました');
+}
+
+function exportCSV() {
+  const header = ['日付', '種目名', '部位', 'セット番号', '重量(kg)', '回数', '総重量(kg)'];
+  const rows = [header];
+
+  const sortedDates = Object.keys(workouts).sort();
+  for (const date of sortedDates) {
+    const entry = workouts[date];
+    if (!entry || !entry.items || entry.items.length === 0) continue;
+    for (const item of entry.items) {
+      const ex = getExerciseById(item.exerciseId);
+      const name = ex ? ex.name : '(削除された種目)';
+      const part = ex ? ex.bodyPart : '';
+      item.sets.forEach((s, idx) => {
+        const weight = Number(s.weight) || 0;
+        const reps = Number(s.reps) || 0;
+        rows.push([date, name, part, idx + 1, weight, reps, weight * reps]);
+      });
+    }
+  }
+
+  const escape = cell => {
+    const str = String(cell);
+    return (str.includes(',') || str.includes('"') || str.includes('\n'))
+      ? '"' + str.replace(/"/g, '""') + '"'
+      : str;
+  };
+  const csv = '﻿' + rows.map(row => row.map(escape).join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `workout_log_${today}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('CSVをエクスポートしました');
 }
 
 /* ===== ルーティン: 最新の記録を探す ===== */
@@ -1805,6 +1844,7 @@ document.getElementById('btnAddExercise').addEventListener('click', () => openEx
 document.getElementById('btnMakeDummyPastData').addEventListener('click', makeDummyPastData);
 document.getElementById('btnOpenSettings').addEventListener('click', openSettingsModal);
 document.getElementById('btnExportData').addEventListener('click', exportAllData);
+document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
 document.getElementById('btnCloseExerciseModal').addEventListener('click', () => {
   document.getElementById('exerciseModal').classList.remove('show');
   if (exModalMode === 'multi') {
