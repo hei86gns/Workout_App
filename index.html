@@ -116,7 +116,7 @@
   .set-table { padding: 0 16px 14px; }
   .set-row {
     display: grid;
-    grid-template-columns: 28px 1fr 1fr 28px;
+    grid-template-columns: 28px 1fr 1fr 34px 24px;
     gap: 8px;
     align-items: center;
     padding: 6px 0;
@@ -151,6 +151,16 @@
     font-size: 16px;
     cursor: pointer;
     text-align: center;
+  }
+  .set-done {
+    background: none;
+    border: none;
+    color: var(--green);
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1;
   }
   .add-set-btn {
     width: 100%;
@@ -420,6 +430,33 @@
     margin-top: 8px;
     margin-bottom: 16px;
   }
+  .start-workout-btn {
+    width: 100%;
+    background: var(--green);
+    color: #0a1f14;
+    border: none;
+    border-radius: 14px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 8px;
+    margin-bottom: 16px;
+  }
+  .workout-timer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    padding: 12px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    background: rgba(255,107,53,0.1);
+    border-radius: 14px;
+  }
   .completed-badge {
     display: flex;
     align-items: center;
@@ -504,12 +541,6 @@
     <button class="btn btn-primary" id="btnAddExercise">＋ 種目を追加</button>
   </div>
 
-  <div class="action-row">
-    <button class="btn btn-secondary" id="btnMakeDummyPastData" style="background:#3a2a1a;border-color:#5c4a2c;color:#e0a050;">
-      🧪 [テスト用] 3日前にダミー記録を作成
-    </button>
-  </div>
-
   <div id="todayList"></div>
 
   <div id="completeArea"></div>
@@ -532,9 +563,10 @@
         <button class="part-tab active" id="statsTimeframeWeek" onclick="setStatsTimeframe('week')">週間</button>
         <button class="part-tab" id="statsTimeframeMonth" onclick="setStatsTimeframe('month')">月間</button>
       </div>
-      <div class="stats-row" style="grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div class="stats-row" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
         <div class="day-detail-item">期間合計重量<br><strong id="summaryTotalWeight">0kg</strong></div>
         <div class="day-detail-item">トレーニング回数<br><strong id="summaryCount">0回</strong></div>
+        <div class="day-detail-item">合計時間<br><strong id="summaryTime">-</strong></div>
         <div class="day-detail-item">消費カロリー<br><strong id="summaryCalories">0kcal</strong></div>
       </div>
     </div>
@@ -805,14 +837,11 @@ function getExerciseById(id) {
 
 function ensureTodayEntry() {
   if (!workouts[today]) {
-    workouts[today] = { memo: '', items: [], completed: false, startTime: new Date().toISOString() };
+    workouts[today] = { memo: '', items: [], completed: false };
   }
   const entry = workouts[today];
   if (entry.completed === undefined) {
     entry.completed = false;
-  }
-  if (!entry.startTime) {
-    entry.startTime = new Date().toISOString();
   }
   return entry;
 }
@@ -844,6 +873,7 @@ function renderToday() {
         <input type="text" inputmode="numeric" placeholder="回数" value="${s.reps ?? ''}"
           oninput="sanitizeNumberInput(this, false)"
           onchange="updateSet(${itemIdx}, ${setIdx}, 'reps', this.value)">
+        <button class="set-done" onclick="completeSet(${itemIdx}, ${setIdx})">✓</button>
         <button class="set-del" onclick="deleteSet(${itemIdx}, ${setIdx})">✕</button>
       </div>
     `).join('');
@@ -859,7 +889,7 @@ function renderToday() {
         </div>
         <div class="set-table">
           <div class="set-row header-row">
-            <div></div><div style="text-align:center">重量(kg)</div><div style="text-align:center">回数</div><div></div>
+            <div></div><div style="text-align:center">重量(kg)</div><div style="text-align:center">回数</div><div></div><div></div>
           </div>
           ${setsHtml}
           <button class="add-set-btn" onclick="addSet(${itemIdx})">＋ セットを追加</button>
@@ -878,22 +908,35 @@ function renderCompleteArea(entry) {
   const area = document.getElementById('completeArea');
   const summary = getEntrySummary(entry);
   if (entry.completed) {
+    clearInterval(workoutTimerInterval);
     area.innerHTML = `
       <div class="completed-badge">
         ✓ 今日のトレーニングは完了済みです<br>
         ${summary.durationLabel} ・ 総重量 ${summary.totalWeight}kg ・ 消費 ${summary.calories}kcal
       </div>
     `;
-  } else {
+  } else if (entry.startTime) {
     area.innerHTML = `
+      <div class="workout-timer">⏱ <span id="workoutElapsed">0分経過</span></div>
       <button class="complete-btn" id="btnCompleteWorkout">今日のトレーニングを完了</button>
-      <div class="stats-row" style="margin-top:12px;">
+      <div class="stats-row" style="margin-top:8px;">
         <div class="stats-label">概算</div>
-        <div class="stats-bar-wrap" style="background:rgba(255,255,255,0.05);border:none;"><div class="stats-bar" style="width:100%;background:transparent;"></div></div>
+        <div class="stats-bar-wrap" style="background:rgba(255,255,255,0.05);border:none;"></div>
         <div class="stats-value">${summary.totalWeight}kg / ${summary.totalSets}セット</div>
       </div>
     `;
     document.getElementById('btnCompleteWorkout').addEventListener('click', completeTodayWorkout);
+    startWorkoutTimer();
+  } else {
+    area.innerHTML = `
+      <button class="start-workout-btn" id="btnStartWorkout">▶ トレーニングを開始</button>
+      <div class="stats-row" style="margin-top:8px;">
+        <div class="stats-label">概算</div>
+        <div class="stats-bar-wrap" style="background:rgba(255,255,255,0.05);border:none;"></div>
+        <div class="stats-value">${summary.totalWeight}kg / ${summary.totalSets}セット</div>
+      </div>
+    `;
+    document.getElementById('btnStartWorkout').addEventListener('click', startWorkout);
   }
 }
 
@@ -906,34 +949,78 @@ function completeTodayWorkout() {
   showToast('今日のトレーニングを完了しました 🎉');
 }
 
-/* ===== [テスト用] 過去日コピー動作確認のためのダミーデータ生成 ===== */
-function makeDummyPastData() {
-  const d = new Date();
-  d.setDate(d.getDate() - 3);
-  const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+/* ===== トレーニング開始・タイマー ===== */
+let workoutTimerInterval = null;
 
-  const chestEx = exercises.find(e => e.bodyPart === '胸');
-  const backEx = exercises.find(e => e.bodyPart === '背中');
-
-  workouts[dateStr] = {
-    memo: '',
-    completed: true,
-    items: [
-      {
-        exerciseId: chestEx ? chestEx.id : exercises[0].id,
-        sets: [{ weight: 40, reps: 10 }, { weight: 42.5, reps: 8 }],
-        memo: ''
-      },
-      {
-        exerciseId: backEx ? backEx.id : exercises[1].id,
-        sets: [{ weight: 50, reps: 12 }],
-        memo: ''
-      }
-    ]
-  };
+function startWorkout() {
+  const entry = ensureTodayEntry();
+  if (entry.startTime) return;
+  entry.startTime = new Date().toISOString();
   saveWorkouts(workouts);
-  showToast(`${formatDateLabel(dateStr)}にテスト用データを作成しました`);
+  renderCompleteArea(entry);
+  showToast('トレーニングを開始しました ▶');
 }
+
+function startWorkoutTimer() {
+  clearInterval(workoutTimerInterval);
+  updateWorkoutElapsed();
+  workoutTimerInterval = setInterval(updateWorkoutElapsed, 10000);
+}
+
+function updateWorkoutElapsed() {
+  const entry = workouts[today];
+  if (!entry || !entry.startTime || entry.completed) {
+    clearInterval(workoutTimerInterval);
+    return;
+  }
+  const elapsed = Math.floor((Date.now() - new Date(entry.startTime)) / 60000);
+  const el = document.getElementById('workoutElapsed');
+  if (el) el.textContent = `${elapsed}分経過`;
+}
+
+/* ===== セット完了 → 次のセットへフォーカス ===== */
+function completeSet(itemIdx, setIdx) {
+  const entry = ensureTodayEntry();
+  const item = entry.items[itemIdx];
+  if (!item) return;
+
+  // DOMの現在値を強制保存（onchangeが未発火の場合に備えて）
+  const cards = document.querySelectorAll('#todayList .exercise-card');
+  if (cards[itemIdx]) {
+    const rows = Array.from(cards[itemIdx].querySelectorAll('.set-row')).filter(r => !r.classList.contains('header-row'));
+    if (rows[setIdx]) {
+      const inputs = rows[setIdx].querySelectorAll('input');
+      if (inputs[0]) item.sets[setIdx].weight = inputs[0].value === '' ? '' : Number(inputs[0].value);
+      if (inputs[1]) item.sets[setIdx].reps   = inputs[1].value === '' ? '' : Number(inputs[1].value);
+    }
+  }
+  saveWorkouts(workouts);
+
+  const nextSetIdx = setIdx + 1;
+  if (nextSetIdx < item.sets.length) {
+    // 次のセットの重量入力にフォーカス
+    const c = document.querySelectorAll('#todayList .exercise-card');
+    if (c[itemIdx]) {
+      const rows = Array.from(c[itemIdx].querySelectorAll('.set-row')).filter(r => !r.classList.contains('header-row'));
+      const input = rows[nextSetIdx] && rows[nextSetIdx].querySelector('input');
+      if (input) input.focus();
+    }
+  } else {
+    // 新しいセットを追加してフォーカス
+    item.sets.push({ weight: '', reps: '' });
+    saveWorkouts(workouts);
+    renderToday();
+    setTimeout(() => {
+      const c = document.querySelectorAll('#todayList .exercise-card');
+      if (c[itemIdx]) {
+        const rows = Array.from(c[itemIdx].querySelectorAll('.set-row')).filter(r => !r.classList.contains('header-row'));
+        const lastInput = rows.length > 0 && rows[rows.length - 1].querySelector('input');
+        if (lastInput) lastInput.focus();
+      }
+    }, 30);
+  }
+}
+
 
 function formatDateLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -1504,16 +1591,21 @@ function selectCalDay(dateStr) {
     `;
   }).join('');
 
+  const entrySummary = getEntrySummary(entry);
+  const durationBadge = entrySummary.durationMinutes > 0
+    ? `<div class="day-detail-item" style="margin-top:8px;text-align:center;">⏱ トレーニング時間: <strong>${entrySummary.durationLabel}</strong></div>`
+    : '';
+
   if (dateStr === today) {
     detailArea.innerHTML = `
-      <div class="day-detail">${itemsHtml}</div>
+      <div class="day-detail">${itemsHtml}${durationBadge}</div>
       <p style="color:var(--text-dim);font-size:12px;text-align:center;padding:8px 0 0;">これは今日の記録です</p>
     `;
     return;
   }
 
   detailArea.innerHTML = `
-    <div class="day-detail">${itemsHtml}</div>
+    <div class="day-detail">${itemsHtml}${durationBadge}</div>
     <button class="btn btn-primary" style="width:100%;margin-top:6px;" onclick="copyDayToToday('${dateStr}')">
       この日の内容を今日にコピー
     </button>
@@ -1699,11 +1791,13 @@ function renderStats() {
   let totalWeight = 0;
   let totalCount = 0;
   let totalCalories = 0;
+  let totalTime = 0;
 
   entries.forEach(entry => {
     const summary = getEntrySummary(entry);
     totalWeight += summary.totalWeight;
     totalCalories += summary.calories;
+    totalTime += summary.durationMinutes;
     totalCount += 1;
 
     entry.items.forEach(item => {
@@ -1739,6 +1833,7 @@ function renderStats() {
 
   summaryTotalWeight.textContent = `${Math.round(totalWeight)}kg`;
   summaryCount.textContent = `${totalCount}回`;
+  document.getElementById('summaryTime').textContent = totalTime > 0 ? `${totalTime}分` : '-';
   summaryCalories.textContent = `${Math.round(totalCalories)}kcal`;
 }
 
@@ -1841,7 +1936,6 @@ document.getElementById('btnCloseCalendar').addEventListener('click', () => {
   document.getElementById('calendarModal').classList.remove('show');
 });
 document.getElementById('btnAddExercise').addEventListener('click', () => openExerciseModal('single'));
-document.getElementById('btnMakeDummyPastData').addEventListener('click', makeDummyPastData);
 document.getElementById('btnOpenSettings').addEventListener('click', openSettingsModal);
 document.getElementById('btnExportData').addEventListener('click', exportAllData);
 document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
