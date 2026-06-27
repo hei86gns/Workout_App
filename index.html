@@ -565,7 +565,9 @@
     <button class="btn btn-secondary" id="btnOpenSettings">⚙ 設定</button>
     <button class="btn btn-secondary" id="btnExportData">📤 JSONエクスポート</button>
     <button class="btn btn-secondary" id="btnExportCSV">📊 CSVエクスポート</button>
+    <button class="btn btn-secondary" id="btnImportData">📥 インポート</button>
   </div>
+  <input type="file" id="importFileInput" accept=".json" style="display:none;">
   <div class="action-row">
     <button class="btn btn-primary" id="btnAddExercise">＋ 種目を追加</button>
   </div>
@@ -1254,6 +1256,45 @@ function exportAllData() {
   link.click();
   document.body.removeChild(link);
   showToast('データをエクスポートしました');
+}
+
+function importData() {
+  document.getElementById('importFileInput').click();
+}
+
+async function handleImportFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    if (data.workouts && Object.keys(data.workouts).length > 0) {
+      workouts = { ...workouts, ...data.workouts };
+      localStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(workouts));
+    }
+    if (data.exercises && data.exercises.length > 0) {
+      exercises = data.exercises;
+      localStorage.setItem(STORAGE_KEYS.exercises, JSON.stringify(exercises));
+    }
+    if (data.routines && data.routines.length > 0) {
+      routines = data.routines;
+      localStorage.setItem(STORAGE_KEYS.routines, JSON.stringify(routines));
+    }
+    if (data.settings && Object.keys(data.settings).length > 0) {
+      userSettings = data.settings;
+      localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(userSettings));
+    }
+
+    saveBackup();
+    await syncToSupabase();
+    setActiveTab('home');
+    showToast('データをインポートしました ✓');
+  } catch (err) {
+    showToast('インポートに失敗しました');
+    console.error(err);
+  }
+  e.target.value = '';
 }
 
 function exportCSV() {
@@ -2175,6 +2216,8 @@ document.getElementById('btnAddExercise').addEventListener('click', () => openEx
 document.getElementById('btnOpenSettings').addEventListener('click', openSettingsModal);
 document.getElementById('btnExportData').addEventListener('click', exportAllData);
 document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+document.getElementById('btnImportData').addEventListener('click', importData);
+document.getElementById('importFileInput').addEventListener('change', handleImportFile);
 document.getElementById('btnCloseExerciseModal').addEventListener('click', () => {
   document.getElementById('exerciseModal').classList.remove('show');
   if (exModalMode === 'multi') {
