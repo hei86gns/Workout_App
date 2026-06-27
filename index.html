@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>トレログ</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #14171c;
@@ -517,6 +518,34 @@
   }
   .stats-value { font-size: 13px; color: var(--text); text-align: right; }
   .stats-empty { text-align: center; color: var(--text-dim); padding: 40px 0; }
+
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-overlay.show { display: flex; }
+  .login-box {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 28px 20px;
+    width: 100%;
+    max-width: 360px;
+    border: 1px solid var(--border);
+  }
+  .login-box h2 { font-size: 22px; text-align: center; margin: 0 0 6px; }
+  .login-box .subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.6;
+    margin: 0 0 20px;
+  }
 </style>
 </head>
 <body>
@@ -668,6 +697,22 @@
   </div>
 </div>
 
+<!-- ログイン画面 -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-box">
+    <h2>🏋️ トレログ</h2>
+    <p class="subtitle">ログインするとデータがクラウドに保存され、<br>機種変更後も引き継げます。</p>
+    <div class="field-label">メールアドレス</div>
+    <input type="email" class="text-input" id="loginEmail" placeholder="example@email.com" style="margin-bottom:10px;">
+    <div class="field-label">パスワード</div>
+    <input type="password" class="text-input" id="loginPassword" placeholder="パスワード（6文字以上）" style="margin-bottom:8px;">
+    <div id="loginError" style="color:var(--danger);font-size:13px;margin-bottom:10px;text-align:center;min-height:18px;"></div>
+    <button class="btn btn-primary" id="btnLogin" style="width:100%;margin-bottom:8px;">ログイン</button>
+    <button class="btn btn-secondary" id="btnSignup" style="width:100%;margin-bottom:8px;">新規アカウント作成</button>
+    <button class="btn btn-secondary" id="btnSkipLogin" style="width:100%;color:var(--text-dim);font-size:13px;">ログインせずに使う</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- 設定モーダル -->
@@ -678,6 +723,9 @@
     <input type="text" class="text-input" id="bodyWeightInput" placeholder="例：65" inputmode="decimal">
     <div class="field-label">バックアップ</div>
     <p id="backupInfo" style="color:var(--text-dim);font-size:13px;line-height:1.5;margin:0 0 12px;">保存するたびに自動バックアップされます。</p>
+    <div class="field-label">アカウント</div>
+    <p id="accountInfo" style="color:var(--text-dim);font-size:13px;margin:0 0 8px;"></p>
+    <button class="btn btn-secondary" id="btnLogout" style="width:100%;margin-bottom:12px;color:var(--danger);display:none;">ログアウト</button>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="btnCloseSettings">閉じる</button>
       <button class="btn btn-primary" id="btnSaveSettings">保存</button>
@@ -686,6 +734,12 @@
 </div>
 
 <script>
+/* ===== Supabase ===== */
+const SUPABASE_URL = 'https://disfgytjjflnlowywess.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_om-kf2zIGYcP5CZhxXXgJA_JY1IaBo1';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let supabaseUser = null;
+
 /* ===== データ層 ===== */
 const STORAGE_KEYS = {
   exercises: 'bf_exercises',
@@ -780,6 +834,7 @@ function loadWorkouts() {
 function saveWorkouts(workouts) {
   localStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(workouts));
   saveBackup();
+  syncToSupabase();
 }
 
 function loadSettings() {
@@ -791,6 +846,7 @@ function loadSettings() {
 function saveSettings(settings) {
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
   saveBackup();
+  syncToSupabase();
 }
 
 function saveBackup() {
@@ -823,6 +879,7 @@ function loadRoutines() {
 
 function saveRoutines(routines) {
   localStorage.setItem(STORAGE_KEYS.routines, JSON.stringify(routines));
+  syncToSupabase();
 }
 
 let exercises = loadExercises();
@@ -1952,6 +2009,153 @@ function renderWeeklyCountChart(container, weeklyCounts) {
   }).join('');
 }
 
+/* ===== Supabase 認証・同期 ===== */
+async function initAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    supabaseUser = session.user;
+    updateAccountInfo();
+    await loadFromSupabase();
+    setActiveTab('home');
+  } else {
+    document.getElementById('loginOverlay').classList.add('show');
+  }
+  sb.auth.onAuthStateChange((event, session) => {
+    supabaseUser = session ? session.user : null;
+    updateAccountInfo();
+  });
+}
+
+async function loginWithEmail() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'メールアドレスとパスワードを入力してください'; return; }
+  const btn = document.getElementById('btnLogin');
+  btn.textContent = 'ログイン中...';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  btn.textContent = 'ログイン';
+  if (error) { errEl.textContent = 'ログインに失敗しました。メールアドレスとパスワードを確認してください。'; return; }
+  supabaseUser = data.user;
+  document.getElementById('loginOverlay').classList.remove('show');
+  updateAccountInfo();
+  await loadFromSupabase();
+  setActiveTab('home');
+  showToast('ログインしました ✓');
+}
+
+async function signupWithEmail() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'メールアドレスとパスワードを入力してください'; return; }
+  if (password.length < 6) { errEl.textContent = 'パスワードは6文字以上にしてください'; return; }
+  const btn = document.getElementById('btnSignup');
+  btn.textContent = '作成中...';
+  const { data, error } = await sb.auth.signUp({ email, password });
+  btn.textContent = '新規アカウント作成';
+  if (error) { errEl.textContent = 'アカウント作成に失敗しました: ' + error.message; return; }
+  supabaseUser = data.user;
+  document.getElementById('loginOverlay').classList.remove('show');
+  updateAccountInfo();
+  await syncToSupabase();
+  setActiveTab('home');
+  showToast('アカウントを作成しました ✓');
+}
+
+async function logoutUser() {
+  if (!confirm('ログアウトしますか？\nデータはこの端末に残ります。')) return;
+  await sb.auth.signOut();
+  supabaseUser = null;
+  updateAccountInfo();
+  document.getElementById('settingsModal').classList.remove('show');
+  showToast('ログアウトしました');
+}
+
+function updateAccountInfo() {
+  const infoEl = document.getElementById('accountInfo');
+  const logoutBtn = document.getElementById('btnLogout');
+  if (!infoEl) return;
+  if (supabaseUser) {
+    infoEl.textContent = 'ログイン中: ' + supabaseUser.email;
+    if (logoutBtn) logoutBtn.style.display = '';
+  } else {
+    infoEl.textContent = 'ログインしていません（データはこの端末のみ）';
+    if (logoutBtn) logoutBtn.style.display = 'none';
+  }
+}
+
+async function syncToSupabase() {
+  if (!supabaseUser) return;
+  try {
+    const { error } = await sb.from('user_data').upsert({
+      user_id: supabaseUser.id,
+      workouts,
+      exercises,
+      routines,
+      tl_settings: userSettings,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+    if (error) console.error('Sync error:', error);
+  } catch (e) {
+    console.error('Sync failed:', e);
+  }
+}
+
+async function loadFromSupabase() {
+  if (!supabaseUser) return;
+  try {
+    const { data, error } = await sb.from('user_data')
+      .select('workouts, exercises, routines, tl_settings')
+      .eq('user_id', supabaseUser.id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { console.error('Load error:', error); return; }
+
+    if (!data || (!data.workouts && !data.exercises)) {
+      await syncToSupabase();
+      return;
+    }
+
+    // ワークアウト: ローカルとクラウドの日付を統合
+    const cloudWorkouts = data.workouts || {};
+    const merged = { ...workouts };
+    Object.entries(cloudWorkouts).forEach(([date, entry]) => {
+      if (!merged[date]) {
+        merged[date] = entry;
+      } else if (entry.completed && !merged[date].completed) {
+        merged[date] = entry;
+      }
+    });
+    workouts = merged;
+    localStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(workouts));
+
+    // 種目: 件数が多い方を採用
+    if (data.exercises && data.exercises.length > exercises.length) {
+      exercises = data.exercises;
+      localStorage.setItem(STORAGE_KEYS.exercises, JSON.stringify(exercises));
+    }
+
+    // ルーティン: クラウドを優先
+    if (data.routines && data.routines.length > 0) {
+      routines = data.routines;
+      localStorage.setItem(STORAGE_KEYS.routines, JSON.stringify(routines));
+    }
+
+    // 設定: クラウドを優先
+    if (data.tl_settings && Object.keys(data.tl_settings).length > 0) {
+      userSettings = data.tl_settings;
+      localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(userSettings));
+    }
+
+    await syncToSupabase();
+  } catch (e) {
+    console.error('loadFromSupabase failed:', e);
+  }
+}
+
 /* ===== トースト ===== */
 let toastTimer = null;
 function showToast(msg) {
@@ -2011,9 +2215,19 @@ document.getElementById('btnCloseSettings').addEventListener('click', () => {
   document.getElementById('settingsModal').classList.remove('show');
 });
 document.getElementById('btnSaveSettings').addEventListener('click', saveSettingsModal);
+document.getElementById('btnLogout').addEventListener('click', logoutUser);
+document.getElementById('btnLogin').addEventListener('click', loginWithEmail);
+document.getElementById('btnSignup').addEventListener('click', signupWithEmail);
+document.getElementById('btnSkipLogin').addEventListener('click', () => {
+  document.getElementById('loginOverlay').classList.remove('show');
+});
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loginWithEmail();
+});
 
 /* ===== 初期描画 ===== */
 setActiveTab('home');
+initAuth();
 </script>
 </body>
 </html>
