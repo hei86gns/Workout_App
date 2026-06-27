@@ -914,11 +914,13 @@ function renderCompleteArea(entry) {
         ✓ 今日のトレーニングは完了済みです<br>
         ${summary.durationLabel} ・ 総重量 ${summary.totalWeight}kg ・ 消費 ${summary.calories}kcal
       </div>
+      <button class="btn btn-secondary" id="btnReopenWorkout" style="width:100%;margin-top:10px;">✏ トレーニング内容を修正する</button>
     `;
+    document.getElementById('btnReopenWorkout').addEventListener('click', reopenWorkout);
   } else if (entry.startTime) {
     area.innerHTML = `
       <div class="workout-timer">⏱ <span id="workoutElapsed">0分経過</span></div>
-      <button class="complete-btn" id="btnCompleteWorkout">今日のトレーニングを完了</button>
+      <button class="complete-btn" id="btnCompleteWorkout">✓ トレーニングを終了する</button>
       <div class="stats-row" style="margin-top:8px;">
         <div class="stats-label">概算</div>
         <div class="stats-bar-wrap" style="background:rgba(255,255,255,0.05);border:none;"></div>
@@ -951,6 +953,7 @@ function completeTodayWorkout() {
 
 /* ===== トレーニング開始・タイマー ===== */
 let workoutTimerInterval = null;
+let workoutStartDialogShown = false;
 
 function startWorkout() {
   const entry = ensureTodayEntry();
@@ -959,6 +962,33 @@ function startWorkout() {
   saveWorkouts(workouts);
   renderCompleteArea(entry);
   showToast('トレーニングを開始しました ▶');
+}
+
+function maybeShowStartDialog() {
+  const entry = workouts[today];
+  if (!entry || entry.startTime || entry.completed || workoutStartDialogShown) return;
+  const hasValue = entry.items.some(item =>
+    item.sets.some(s => (s.weight !== '' && s.weight !== 0) || (s.reps !== '' && s.reps !== 0))
+  );
+  if (!hasValue) return;
+  workoutStartDialogShown = true;
+  setTimeout(() => {
+    if (confirm('トレーニングを開始しますか？')) {
+      startWorkout();
+    }
+  }, 50);
+}
+
+function reopenWorkout() {
+  if (!confirm('トレーニング内容を修正しますか？\n（完了状態が解除され、編集できるようになります）')) return;
+  const entry = workouts[today];
+  if (!entry) return;
+  entry.completed = false;
+  delete entry.completedAt;
+  saveWorkouts(workouts);
+  workoutStartDialogShown = true;
+  renderToday();
+  showToast('編集モードに戻りました');
 }
 
 function startWorkoutTimer() {
@@ -995,6 +1025,7 @@ function completeSet(itemIdx, setIdx) {
     }
   }
   saveWorkouts(workouts);
+  maybeShowStartDialog();
 
   const nextSetIdx = setIdx + 1;
   if (nextSetIdx < item.sets.length) {
@@ -1033,6 +1064,7 @@ function updateSet(itemIdx, setIdx, field, value) {
   const entry = ensureTodayEntry();
   entry.items[itemIdx].sets[setIdx][field] = value === '' ? '' : Number(value);
   saveWorkouts(workouts);
+  maybeShowStartDialog();
 }
 
 function updateItemMemo(itemIdx, value) {
