@@ -1934,10 +1934,11 @@ function renderStats() {
       const ex = getExerciseById(item.exerciseId);
       if (!ex) return;
       partCounts[ex.bodyPart] = (partCounts[ex.bodyPart] || 0) + item.sets.length;
+      if (!exerciseVolumes[item.exerciseId]) {
+        exerciseVolumes[item.exerciseId] = { name: ex.name, part: ex.bodyPart, volume: 0 };
+      }
       exerciseVolumes[item.exerciseId].volume += item.sets.reduce((sum, set) => {
-        const weight = Number(set.weight) || 0;
-        const reps = Number(set.reps) || 0;
-        return sum + weight * reps;
+        return sum + (Number(set.weight) || 0) * (Number(set.reps) || 0);
       }, 0);
     });
 
@@ -2000,7 +2001,14 @@ function renderPeriodAggregateChart(container, weekKeys, monthKeys, weeklyWeight
 }
 
 function renderPartFrequencyChart(container, partCounts) {
-  const values = Object.entries(partCounts).map(([part, count]) => ({ part, count }));
+  const values = Object.entries(partCounts)
+    .map(([part, count]) => ({ part, count }))
+    .filter(v => v.count > 0)
+    .sort((a, b) => b.count - a.count);
+  if (values.length === 0) {
+    container.innerHTML = '<div class="stats-empty">データがありません</div>';
+    return;
+  }
   const maxCount = Math.max(1, ...values.map(v => v.count));
   container.innerHTML = values.map(({ part, count }) => {
     const width = Math.round((count / maxCount) * 100);
@@ -2016,8 +2024,13 @@ function renderPartFrequencyChart(container, partCounts) {
 
 function renderExerciseVolumeChart(container, exerciseVolumes) {
   const values = Object.values(exerciseVolumes)
+    .filter(v => v.volume > 0)
     .sort((a, b) => b.volume - a.volume)
     .slice(0, 10);
+  if (values.length === 0) {
+    container.innerHTML = '<div class="stats-empty">データがありません</div>';
+    return;
+  }
   const maxVolume = Math.max(1, ...values.map(v => v.volume));
   container.innerHTML = values.map(item => {
     const width = Math.round((item.volume / maxVolume) * 100);
@@ -2025,7 +2038,7 @@ function renderExerciseVolumeChart(container, exerciseVolumes) {
       <div class="stats-row">
         <div class="stats-label">${item.name}</div>
         <div class="stats-bar-wrap"><div class="stats-bar" style="width:${width}%;"></div></div>
-        <div class="stats-value">${item.volume}</div>
+        <div class="stats-value">${Math.round(item.volume)}kg</div>
       </div>
     `;
   }).join('');
