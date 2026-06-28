@@ -1287,6 +1287,9 @@ async function handleImportFile(e) {
     }
 
     saveBackup();
+    // ローカルに正しいデータを確保してから同期
+    exercises = JSON.parse(localStorage.getItem(STORAGE_KEYS.exercises) || '[]');
+    workouts = JSON.parse(localStorage.getItem(STORAGE_KEYS.workouts) || '{}');
     await syncToSupabase();
     setActiveTab('home');
     showToast('データをインポートしました ✓');
@@ -2168,8 +2171,8 @@ async function loadFromSupabase() {
 
     if (error && error.code !== 'PGRST116') { console.error('Load error:', error); return; }
 
-    const cloudWorkouts = data.workouts || {};
-    const cloudExercises = data.exercises || [];
+    const cloudWorkouts = data ? (data.workouts || {}) : {};
+    const cloudExercises = data ? (data.exercises || []) : [];
 
     // Supabaseにまだ何もなければローカルデータをアップロードして終了
     if (Object.keys(cloudWorkouts).length === 0 && cloudExercises.length === 0) {
@@ -2177,13 +2180,7 @@ async function loadFromSupabase() {
       return;
     }
 
-    // 種目: Supabaseにデータがあれば常に優先（ワークアウトとのID整合性を保つため）
-    if (cloudExercises.length > 0) {
-      exercises = cloudExercises;
-      localStorage.setItem(STORAGE_KEYS.exercises, JSON.stringify(exercises));
-    }
-
-    // ワークアウト: ローカルとクラウドの日付を統合
+    // ワークアウト: ローカルとクラウドの日付を統合（先にマージして整合チェックに使う）
     const merged = { ...workouts };
     Object.entries(cloudWorkouts).forEach(([date, entry]) => {
       if (!merged[date]) {
@@ -2194,6 +2191,25 @@ async function loadFromSupabase() {
     });
     workouts = merged;
     localStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(workouts));
+
+    // 種目: ワークアウトと整合するIDを持つ方（ローカル or クラウド）を優先
+    const localExercises = JSON.parse(localStorage.getItem(STORAGE_KEYS.exercises) || '[]');
+    const countMatches = (exList) => {
+      const idSet = new Set(exList.map(e => e.id));
+      let n = 0;
+      Object.values(workouts).forEach(entry => {
+        (entry.items || []).forEach(item => { if (idSet.has(item.exerciseId)) n++; });
+      });
+      return n;
+    };
+    const localMatches = countMatches(localExercises);
+    const cloudMatches = countMatches(cloudExercises);
+    if (cloudMatches >= localMatches && cloudExercises.length > 0) {
+      exercises = cloudExercises;
+      localStorage.setItem(STORAGE_KEYS.exercises, JSON.stringify(exercises));
+    } else if (localExercises.length > 0) {
+      exercises = localExercises;
+    }
 
     // ルーティン: クラウドを優先
     if (data.routines && data.routines.length > 0) {
