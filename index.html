@@ -2168,13 +2168,22 @@ async function loadFromSupabase() {
 
     if (error && error.code !== 'PGRST116') { console.error('Load error:', error); return; }
 
-    if (!data || (!data.workouts && !data.exercises)) {
+    const cloudWorkouts = data.workouts || {};
+    const cloudExercises = data.exercises || [];
+
+    // Supabaseにまだ何もなければローカルデータをアップロードして終了
+    if (Object.keys(cloudWorkouts).length === 0 && cloudExercises.length === 0) {
       await syncToSupabase();
       return;
     }
 
+    // 種目: Supabaseにデータがあれば常に優先（ワークアウトとのID整合性を保つため）
+    if (cloudExercises.length > 0) {
+      exercises = cloudExercises;
+      localStorage.setItem(STORAGE_KEYS.exercises, JSON.stringify(exercises));
+    }
+
     // ワークアウト: ローカルとクラウドの日付を統合
-    const cloudWorkouts = data.workouts || {};
     const merged = { ...workouts };
     Object.entries(cloudWorkouts).forEach(([date, entry]) => {
       if (!merged[date]) {
@@ -2185,12 +2194,6 @@ async function loadFromSupabase() {
     });
     workouts = merged;
     localStorage.setItem(STORAGE_KEYS.workouts, JSON.stringify(workouts));
-
-    // 種目: 件数が多い方を採用
-    if (data.exercises && data.exercises.length > exercises.length) {
-      exercises = data.exercises;
-      localStorage.setItem(STORAGE_KEYS.exercises, JSON.stringify(exercises));
-    }
 
     // ルーティン: クラウドを優先
     if (data.routines && data.routines.length > 0) {
