@@ -35,16 +35,22 @@
     position: sticky;
     top: 0;
     background: var(--bg);
-    padding: 18px 16px 10px;
+    padding: 14px 16px 10px;
     z-index: 10;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
+    gap: 4px;
   }
   header h1 {
-    font-size: 19px;
+    font-size: 22px;
     font-weight: 700;
     margin: 0;
+  }
+  header .date-pill {
+    position: absolute;
+    top: 16px;
+    right: 16px;
   }
   .date-pill {
     font-size: 13px;
@@ -558,10 +564,8 @@
 <body>
 
 <header>
-  <div style="display:flex;align-items:center;gap:10px;">
-    <img src="logo.png" alt="Torelog" style="width:34px;height:34px;border-radius:9px;">
-    <h1>Torelog</h1>
-  </div>
+  <img src="logo.png?v=2" alt="Torelog" style="width:38px;height:38px;">
+  <h1>Torelog</h1>
   <span class="date-pill" id="headerDate"></span>
 </header>
 
