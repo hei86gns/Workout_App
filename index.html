@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>トレログ</title>
+<title>Torelog</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -156,12 +158,17 @@
   .set-done {
     background: none;
     border: none;
-    color: var(--green);
+    color: var(--text-dim);
+    opacity: 0.45;
     font-size: 20px;
     font-weight: 700;
     cursor: pointer;
     text-align: center;
     line-height: 1;
+  }
+  .set-done.checked {
+    color: var(--green);
+    opacity: 1;
   }
   .add-set-btn {
     width: 100%;
@@ -551,30 +558,27 @@
 <body>
 
 <header>
-  <h1>今日のトレーニング</h1>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <img src="logo.png" alt="Torelog" style="width:34px;height:34px;border-radius:9px;">
+    <h1>Torelog</h1>
+  </div>
   <span class="date-pill" id="headerDate"></span>
 </header>
 
 <main>
   <div id="homeView">
     <div class="action-row">
-      <button class="btn btn-secondary" id="btnOpenCalendar">📅 過去日コピー</button>
+      <button class="btn btn-secondary" id="btnOpenCalendar">📅 カレンダー</button>
       <button class="btn btn-secondary" id="btnOpenRoutinePicker">📋 ルーティン</button>
     </div>
-  <div class="action-row">
-    <button class="btn btn-secondary" id="btnOpenSettings">⚙ 設定</button>
-    <button class="btn btn-secondary" id="btnExportData">📤 JSONエクスポート</button>
-    <button class="btn btn-secondary" id="btnExportCSV">📊 CSVエクスポート</button>
-    <button class="btn btn-secondary" id="btnImportData">📥 インポート</button>
-  </div>
   <input type="file" id="importFileInput" accept=".json" style="display:none;">
   <div class="action-row">
     <button class="btn btn-primary" id="btnAddExercise">＋ 種目を追加</button>
   </div>
 
-  <div id="todayList"></div>
-
   <div id="completeArea"></div>
+
+  <div id="todayList"></div>
 
   <div class="empty-state" id="emptyState" style="display:none;">
     <div class="big-icon">🏋️</div>
@@ -622,9 +626,9 @@
 
 <nav class="tabbar">
   <button class="active" id="tabHome"><span class="tab-icon">🏠</span>ホーム</button>
-  <button id="tabCalendar"><span class="tab-icon">📅</span>カレンダー</button>
   <button id="tabRoutine"><span class="tab-icon">📋</span>ルーティン</button>
   <button id="tabStats"><span class="tab-icon">📊</span>統計</button>
+  <button id="tabSettings"><span class="tab-icon">⚙</span>設定</button>
 </nav>
 
 <!-- カレンダーモーダル -->
@@ -725,6 +729,12 @@
     <input type="text" class="text-input" id="bodyWeightInput" placeholder="例：65" inputmode="decimal">
     <div class="field-label">バックアップ</div>
     <p id="backupInfo" style="color:var(--text-dim);font-size:13px;line-height:1.5;margin:0 0 12px;">保存するたびに自動バックアップされます。</p>
+    <div class="field-label">データ管理</div>
+    <div class="modal-actions" style="margin-top:4px;margin-bottom:4px;">
+      <button class="btn btn-secondary" id="btnExportData">📤 JSON</button>
+      <button class="btn btn-secondary" id="btnExportCSV">📊 CSV</button>
+      <button class="btn btn-secondary" id="btnImportData">📥 取込</button>
+    </div>
     <div class="field-label">アカウント</div>
     <p id="accountInfo" style="color:var(--text-dim);font-size:13px;margin:0 0 8px;"></p>
     <button class="btn btn-secondary" id="btnLogout" style="width:100%;margin-bottom:12px;color:var(--danger);display:none;">ログアウト</button>
@@ -932,7 +942,7 @@ function renderToday() {
         <input type="text" inputmode="numeric" placeholder="回数" value="${s.reps ?? ''}"
           oninput="sanitizeNumberInput(this, false)"
           onchange="updateSet(${itemIdx}, ${setIdx}, 'reps', this.value)">
-        <button class="set-done" onclick="completeSet(${itemIdx}, ${setIdx})">✓</button>
+        <button class="set-done${s.done ? ' checked' : ''}" onclick="completeSet(${itemIdx}, ${setIdx})">✓</button>
         <button class="set-del" onclick="deleteSet(${itemIdx}, ${setIdx})">✕</button>
       </div>
     `).join('');
@@ -1012,7 +1022,6 @@ function completeTodayWorkout() {
 
 /* ===== トレーニング開始・タイマー ===== */
 let workoutTimerInterval = null;
-let workoutStartDialogShown = false;
 
 function startWorkout() {
   const entry = ensureTodayEntry();
@@ -1023,21 +1032,6 @@ function startWorkout() {
   showToast('トレーニングを開始しました ▶');
 }
 
-function maybeShowStartDialog() {
-  const entry = workouts[today];
-  if (!entry || entry.startTime || entry.completed || workoutStartDialogShown) return;
-  const hasValue = entry.items.some(item =>
-    item.sets.some(s => (s.weight !== '' && s.weight !== 0) || (s.reps !== '' && s.reps !== 0))
-  );
-  if (!hasValue) return;
-  workoutStartDialogShown = true;
-  setTimeout(() => {
-    if (confirm('トレーニングを開始しますか？')) {
-      startWorkout();
-    }
-  }, 50);
-}
-
 function reopenWorkout() {
   if (!confirm('トレーニング内容を修正しますか？\n（完了状態が解除され、編集できるようになります）')) return;
   const entry = workouts[today];
@@ -1045,7 +1039,6 @@ function reopenWorkout() {
   entry.completed = false;
   delete entry.completedAt;
   saveWorkouts(workouts);
-  workoutStartDialogShown = true;
   renderToday();
   showToast('編集モードに戻りました');
 }
@@ -1073,18 +1066,44 @@ function completeSet(itemIdx, setIdx) {
   const item = entry.items[itemIdx];
   if (!item) return;
 
-  // DOMの現在値を強制保存（onchangeが未発火の場合に備えて）
+  const set = item.sets[setIdx];
   const cards = document.querySelectorAll('#todayList .exercise-card');
-  if (cards[itemIdx]) {
-    const rows = Array.from(cards[itemIdx].querySelectorAll('.set-row')).filter(r => !r.classList.contains('header-row'));
-    if (rows[setIdx]) {
-      const inputs = rows[setIdx].querySelectorAll('input');
-      if (inputs[0]) item.sets[setIdx].weight = inputs[0].value === '' ? '' : Number(inputs[0].value);
-      if (inputs[1]) item.sets[setIdx].reps   = inputs[1].value === '' ? '' : Number(inputs[1].value);
-    }
+  const getRows = () => cards[itemIdx]
+    ? Array.from(cards[itemIdx].querySelectorAll('.set-row')).filter(r => !r.classList.contains('header-row'))
+    : [];
+
+  // チェック済みをもう一度押したら解除
+  if (set.done) {
+    set.done = false;
+    saveWorkouts(workouts);
+    const rows = getRows();
+    const btn = rows[setIdx] && rows[setIdx].querySelector('.set-done');
+    if (btn) btn.classList.remove('checked');
+    return;
   }
+
+  // DOMの現在値を強制保存（onchangeが未発火の場合に備えて）
+  const rows = getRows();
+  if (rows[setIdx]) {
+    const inputs = rows[setIdx].querySelectorAll('input');
+    if (inputs[0]) set.weight = inputs[0].value === '' ? '' : Number(inputs[0].value);
+    if (inputs[1]) set.reps   = inputs[1].value === '' ? '' : Number(inputs[1].value);
+  }
+
+  // その日の最初のチェックでトレーニング開始を確認
+  if (!entry.startTime && !entry.completed) {
+    if (!confirm('トレーニングを始めますか？')) return;
+    set.done = true;
+    saveWorkouts(workouts);
+    startWorkout();
+    renderToday();
+    return;
+  }
+
+  set.done = true;
   saveWorkouts(workouts);
-  maybeShowStartDialog();
+  const btn = rows[setIdx] && rows[setIdx].querySelector('.set-done');
+  if (btn) btn.classList.add('checked');
 
   const nextSetIdx = setIdx + 1;
   if (nextSetIdx < item.sets.length) {
@@ -1123,7 +1142,6 @@ function updateSet(itemIdx, setIdx, field, value) {
   const entry = ensureTodayEntry();
   entry.items[itemIdx].sets[setIdx][field] = value === '' ? '' : Number(value);
   saveWorkouts(workouts);
-  maybeShowStartDialog();
 }
 
 function updateItemMemo(itemIdx, value) {
@@ -2245,7 +2263,6 @@ document.getElementById('btnCloseCalendar').addEventListener('click', () => {
   document.getElementById('calendarModal').classList.remove('show');
 });
 document.getElementById('btnAddExercise').addEventListener('click', () => openExerciseModal('single'));
-document.getElementById('btnOpenSettings').addEventListener('click', openSettingsModal);
 document.getElementById('btnExportData').addEventListener('click', exportAllData);
 document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
 document.getElementById('btnImportData').addEventListener('click', importData);
@@ -2262,7 +2279,7 @@ document.getElementById('calNext').addEventListener('click', () => changeCalMont
 
 document.getElementById('btnOpenRoutinePicker').addEventListener('click', openRoutineListModal);
 document.getElementById('tabRoutine').addEventListener('click', openRoutineListModal);
-document.getElementById('tabCalendar').addEventListener('click', openCalendarModal);
+document.getElementById('tabSettings').addEventListener('click', openSettingsModal);
 document.getElementById('tabHome').addEventListener('click', () => setActiveTab('home'));
 document.getElementById('tabStats').addEventListener('click', () => setActiveTab('stats'));
 document.getElementById('btnCloseRoutineList').addEventListener('click', () => {
