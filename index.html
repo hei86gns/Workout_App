@@ -610,6 +610,10 @@
       </div>
     </div>
     <div class="stats-section">
+      <h2>日別の重量・カロリー</h2>
+      <div id="dailyChart" class="stats-chart"></div>
+    </div>
+    <div class="stats-section">
       <h2>期間別合計</h2>
       <div id="periodAggregateChart" class="stats-chart"></div>
     </div>
@@ -987,6 +991,7 @@ function renderCompleteArea(entry) {
         ✓ 今日のトレーニングは完了済みです<br>
         ${summary.durationLabel} ・ 総重量 ${summary.totalWeight}kg ・ 消費 ${summary.calories}kcal
       </div>
+      ${renderComparisonHtml(entry, summary)}
       <button class="btn btn-secondary" id="btnReopenWorkout" style="width:100%;margin-top:10px;">✏ トレーニング内容を修正する</button>
     `;
     document.getElementById('btnReopenWorkout').addEventListener('click', reopenWorkout);
@@ -1013,6 +1018,41 @@ function renderCompleteArea(entry) {
     `;
     document.getElementById('btnStartWorkout').addEventListener('click', startWorkout);
   }
+}
+
+/* ===== 前回記録との比較 ===== */
+function findComparisonEntry(entry) {
+  if (entry.copiedFromDate && workouts[entry.copiedFromDate]) {
+    return { date: entry.copiedFromDate, entry: workouts[entry.copiedFromDate] };
+  }
+  if (entry.routineId) {
+    const dates = Object.keys(workouts)
+      .filter(d => d !== today)
+      .sort((a, b) => b.localeCompare(a));
+    for (const d of dates) {
+      const e = workouts[d];
+      if (e && e.routineId === entry.routineId && e.items && e.items.length > 0) {
+        return { date: d, entry: e };
+      }
+    }
+  }
+  return null;
+}
+
+function renderComparisonHtml(entry, summary) {
+  const comparison = findComparisonEntry(entry);
+  if (!comparison) return '';
+  const prevSummary = getEntrySummary(comparison.entry);
+  const weightDiff = Math.round(summary.totalWeight - prevSummary.totalWeight);
+  const calDiff = Math.round(summary.calories - prevSummary.calories);
+  const sign = n => (n > 0 ? `+${n}` : `${n}`);
+  const arrow = n => (n > 0 ? '↑' : n < 0 ? '↓' : '→');
+  return `
+    <div class="day-detail-item" style="margin-top:10px;">
+      📊 前回（${formatDateLabel(comparison.date)}）との比較<br>
+      総重量: ${sign(weightDiff)}kg ${arrow(weightDiff)} ・ 消費: ${sign(calDiff)}kcal ${arrow(calDiff)}
+    </div>
+  `;
 }
 
 function completeTodayWorkout() {
@@ -1119,18 +1159,18 @@ function completeSet(itemIdx, setIdx) {
       if (input) input.focus();
     }
   } else {
-    // 新しいセットを追加してフォーカス
-    item.sets.push({ weight: '', reps: '' });
-    saveWorkouts(workouts);
-    renderToday();
-    setTimeout(() => {
-      const c = document.querySelectorAll('#todayList .exercise-card');
-      if (c[itemIdx]) {
-        const rows = Array.from(c[itemIdx].querySelectorAll('.set-row')).filter(r => !r.classList.contains('header-row'));
-        const lastInput = rows.length > 0 && rows[rows.length - 1].querySelector('input');
-        if (lastInput) lastInput.focus();
-      }
-    }, 30);
+    // その種目のセットは完了 → 次の種目の最初のセットへフォーカス
+    const nextItemIdx = itemIdx + 1;
+    if (nextItemIdx < entry.items.length) {
+      setTimeout(() => {
+        const c = document.querySelectorAll('#todayList .exercise-card');
+        if (c[nextItemIdx]) {
+          const rows = Array.from(c[nextItemIdx].querySelectorAll('.set-row')).filter(r => !r.classList.contains('header-row'));
+          const firstInput = rows[0] && rows[0].querySelector('input');
+          if (firstInput) firstInput.focus();
+        }
+      }, 30);
+    }
   }
 }
 
@@ -1489,6 +1529,7 @@ function useRoutineToday() {
   }));
   entry.routineId = routine.id;
   entry.completed = false;
+  delete entry.copiedFromDate;
   saveWorkouts(workouts);
 
   document.getElementById('routineDetailModal').classList.remove('show');
@@ -1784,6 +1825,8 @@ function copyDayToToday(dateStr) {
     memo: ''
   }));
   entry.completed = false;
+  entry.copiedFromDate = dateStr;
+  delete entry.routineId;
   saveWorkouts(workouts);
 
   document.getElementById('calendarModal').classList.remove('show');
@@ -1904,6 +1947,7 @@ function entryBelongsToRoutine(entry, routineId) {
 
 function renderStats() {
   const entries = getAllWorkoutEntries().filter(entry => entryBelongsToRoutine(entry, statsFilterRoutineId));
+  const dailyChart = document.getElementById('dailyChart');
   const partChart = document.getElementById('partFrequencyChart');
   const exerciseChart = document.getElementById('exerciseVolumeChart');
   const weeklyChart = document.getElementById('weeklyCountChart');
@@ -1914,6 +1958,7 @@ function renderStats() {
 
   if (entries.length === 0) {
     const emptyHtml = '<div class="stats-empty">まだトレーニング記録がありません</div>';
+    dailyChart.innerHTML = emptyHtml;
     partChart.innerHTML = emptyHtml;
     exerciseChart.innerHTML = emptyHtml;
     weeklyChart.innerHTML = emptyHtml;
@@ -1982,6 +2027,7 @@ function renderStats() {
   });
 
   renderStatsRoutineOptions();
+  renderDailyChart(dailyChart, entries);
   renderPartFrequencyChart(partChart, partCounts);
   renderExerciseVolumeChart(exerciseChart, exerciseVolumes);
   renderWeeklyCountChart(weeklyChart, weeklyCounts);
@@ -1997,6 +2043,28 @@ function renderStatsRoutineOptions() {
   const select = document.getElementById('statsRoutineSelect');
   const options = [{ id: 'all', name: 'すべて' }, ...routines.map(r => ({ id: r.id, name: r.name }))];
   select.innerHTML = options.map(opt => `<option value="${opt.id}" ${statsFilterRoutineId === opt.id ? 'selected' : ''}>${opt.name}</option>`).join('');
+}
+
+function renderDailyChart(container, entries) {
+  const recent = entries.slice(-14);
+  const summaries = recent.map(entry => ({ date: entry.date, summary: getEntrySummary(entry) }));
+  const maxValue = Math.max(1, ...summaries.map(s => Math.max(s.summary.totalWeight, s.summary.calories)));
+
+  container.innerHTML = summaries.map(({ date, summary }) => {
+    const label = formatDateLabel(date);
+    const weightWidth = Math.round((summary.totalWeight / maxValue) * 100);
+    const calWidth = Math.round((summary.calories / maxValue) * 100);
+    return `
+      <div class="stats-row">
+        <div class="stats-label">${label}</div>
+        <div class="stats-bar-wrap" style="height:54px;display:grid;gap:4px;padding:6px;">
+          <div class="stats-bar" style="width:${weightWidth}%;height:18px;background:linear-gradient(90deg, var(--accent), #ff8e5c);"></div>
+          <div class="stats-bar" style="width:${calWidth}%;height:18px;background:linear-gradient(90deg, #4caf7d, #81c784);"></div>
+        </div>
+        <div class="stats-value">${Math.round(summary.totalWeight)}kg / ${Math.round(summary.calories)}kcal</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderPeriodAggregateChart(container, weekKeys, monthKeys, weeklyWeights, monthlyWeights, weeklyCalories, monthlyCalories) {
