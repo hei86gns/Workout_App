@@ -532,6 +532,38 @@
   .stats-value { font-size: 13px; color: var(--text); text-align: right; }
   .stats-empty { text-align: center; color: var(--text-dim); padding: 40px 0; }
 
+  .line-chart-legend { display: flex; gap: 14px; margin-bottom: 10px; }
+  .line-chart-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .line-chart-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .line-chart-scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+  .line-chart-scroll svg { display: block; touch-action: none; }
+  .lc-gridline { stroke: #2a2f38; stroke-width: 1; }
+  .lc-baseline { stroke: #454c59; stroke-width: 1; }
+  .lc-axis-label { fill: var(--text-dim); font-size: 10px; font-family: inherit; }
+  .lc-baseline-label { fill: var(--text-dim); font-size: 10px; font-family: inherit; font-weight: 700; }
+  .lc-line-weight { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .lc-line-cal { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .lc-dot { r: 3; stroke: var(--bg-card); stroke-width: 1.5; }
+  .lc-end-label { font-size: 11px; font-weight: 700; font-family: inherit; }
+  .lc-crosshair { stroke: var(--text-dim); stroke-width: 1; opacity: 0; pointer-events: none; }
+  .lc-hoverdot { r: 5; stroke: var(--bg-card); stroke-width: 2; opacity: 0; pointer-events: none; }
+  .lc-hit-area { fill: transparent; }
+  .line-chart-tooltip {
+    position: absolute;
+    background: var(--bg-card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    white-space: nowrap;
+    z-index: 5;
+  }
+  .line-chart-tooltip .lc-t-date { color: var(--text-dim); margin-bottom: 2px; }
+
   .login-overlay {
     position: fixed;
     inset: 0;
@@ -610,8 +642,8 @@
       </div>
     </div>
     <div class="stats-section">
-      <h2>日別の重量・カロリー</h2>
-      <div id="dailyChart" class="stats-chart"></div>
+      <h2>日別の推移（初日比 %）</h2>
+      <div id="dailyChart"></div>
     </div>
     <div class="stats-section">
       <h2>期間別合計</h2>
@@ -2046,25 +2078,131 @@ function renderStatsRoutineOptions() {
 }
 
 function renderDailyChart(container, entries) {
-  const recent = entries.slice(-14);
-  const summaries = recent.map(entry => ({ date: entry.date, summary: getEntrySummary(entry) }));
-  const maxValue = Math.max(1, ...summaries.map(s => Math.max(s.summary.totalWeight, s.summary.calories)));
+  const summaries = entries.map(entry => ({ date: entry.date, summary: getEntrySummary(entry) }));
+  const weightValues = summaries.map(s => s.summary.totalWeight);
+  const calValues = summaries.map(s => s.summary.calories);
 
-  container.innerHTML = summaries.map(({ date, summary }) => {
-    const label = formatDateLabel(date);
-    const weightWidth = Math.round((summary.totalWeight / maxValue) * 100);
-    const calWidth = Math.round((summary.calories / maxValue) * 100);
-    return `
-      <div class="stats-row">
-        <div class="stats-label">${label}</div>
-        <div class="stats-bar-wrap" style="height:54px;display:grid;gap:4px;padding:6px;">
-          <div class="stats-bar" style="width:${weightWidth}%;height:18px;background:linear-gradient(90deg, var(--accent), #ff8e5c);"></div>
-          <div class="stats-bar" style="width:${calWidth}%;height:18px;background:linear-gradient(90deg, #4caf7d, #81c784);"></div>
-        </div>
-        <div class="stats-value">${Math.round(summary.totalWeight)}kg / ${Math.round(summary.calories)}kcal</div>
-      </div>
-    `;
-  }).join('');
+  const toIndexed = (values) => {
+    const base = values[0] || 0;
+    if (base === 0) return values.map(() => 100);
+    return values.map(v => Math.round((v / base) * 1000) / 10);
+  };
+  const weightPct = toIndexed(weightValues);
+  const calPct = toIndexed(calValues);
+
+  container.innerHTML = `
+    <div class="line-chart-legend">
+      <span class="line-chart-legend-item"><span class="line-chart-legend-dot" style="background:var(--accent)"></span>総重量</span>
+      <span class="line-chart-legend-item"><span class="line-chart-legend-dot" style="background:var(--green)"></span>消費カロリー</span>
+    </div>
+    <div class="line-chart-scroll" style="position:relative;">
+      <svg id="dailyChartSvg"></svg>
+      <div class="line-chart-tooltip" id="dailyChartTooltip"></div>
+    </div>
+  `;
+
+  const H = 220, padL = 8, padR = 60, padT = 14, padB = 26;
+  const pointGap = 28;
+  const W = Math.max(600, padL + padR + (summaries.length - 1) * pointGap);
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const allVals = weightPct.concat(calPct);
+  const maxDev = Math.max(...allVals.map(v => Math.abs(v - 100)), 5) * 1.15;
+  const domainMin = 100 - maxDev, domainMax = 100 + maxDev;
+
+  const x = (i) => summaries.length > 1 ? padL + (i / (summaries.length - 1)) * plotW : padL + plotW / 2;
+  const y = (v) => padT + (1 - (v - domainMin) / (domainMax - domainMin)) * plotH;
+
+  const svg = document.getElementById('dailyChartSvg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs) => {
+    const e = document.createElementNS(ns, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  };
+
+  svg.appendChild(el('line', { class: 'lc-gridline', x1: padL, y1: padT, x2: W - padR, y2: padT }));
+  svg.appendChild(el('line', { class: 'lc-gridline', x1: padL, y1: H - padB, x2: W - padR, y2: H - padB }));
+
+  const baseY = y(100);
+  svg.appendChild(el('line', { class: 'lc-baseline', x1: padL, y1: baseY, x2: W - padR, y2: baseY }));
+  const baseLabel = el('text', { class: 'lc-baseline-label', x: W - padR + 8, y: baseY + 4 });
+  baseLabel.textContent = '100%';
+  svg.appendChild(baseLabel);
+
+  const drawSeries = (data, lineClass, dotFill) => {
+    const pts = data.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+    svg.appendChild(el('polyline', { class: lineClass, points: pts }));
+    data.forEach((v, i) => {
+      if (i === 0 || i === data.length - 1) return;
+      svg.appendChild(el('circle', { class: 'lc-dot', cx: x(i), cy: y(v), fill: dotFill }));
+    });
+    const lastX = x(data.length - 1), lastY = y(data[data.length - 1]);
+    svg.appendChild(el('circle', { class: 'lc-dot', r: 5, cx: lastX, cy: lastY, fill: dotFill }));
+    const label = el('text', { class: 'lc-end-label', x: lastX + 8, y: lastY + 4, fill: dotFill });
+    label.textContent = `${data[data.length - 1]}%`;
+    svg.appendChild(label);
+  };
+  drawSeries(weightPct, 'lc-line-weight', 'var(--accent)');
+  drawSeries(calPct, 'lc-line-cal', 'var(--green)');
+
+  const fmt = (dateStr) => formatDateLabel(dateStr);
+  const firstLabel = el('text', { class: 'lc-axis-label', x: padL, y: H - 6 });
+  firstLabel.textContent = fmt(summaries[0].date);
+  svg.appendChild(firstLabel);
+  if (summaries.length > 1) {
+    const lastLabel = el('text', { class: 'lc-axis-label', x: W - padR - 30, y: H - 6 });
+    lastLabel.textContent = fmt(summaries[summaries.length - 1].date);
+    svg.appendChild(lastLabel);
+  }
+
+  if (summaries.length > 1) {
+    const crosshair = el('line', { class: 'lc-crosshair', y1: padT, y2: H - padB });
+    svg.appendChild(crosshair);
+    const hoverDotW = el('circle', { class: 'lc-hoverdot', fill: 'var(--accent)' });
+    const hoverDotC = el('circle', { class: 'lc-hoverdot', fill: 'var(--green)' });
+    svg.appendChild(hoverDotW);
+    svg.appendChild(hoverDotC);
+    const hitArea = el('rect', { class: 'lc-hit-area', x: padL, y: 0, width: plotW, height: H });
+    svg.appendChild(hitArea);
+
+    const tooltip = document.getElementById('dailyChartTooltip');
+    const showAt = (i) => {
+      const cx = x(i);
+      crosshair.setAttribute('x1', cx);
+      crosshair.setAttribute('x2', cx);
+      crosshair.setAttribute('opacity', 1);
+      hoverDotW.setAttribute('cx', cx); hoverDotW.setAttribute('cy', y(weightPct[i])); hoverDotW.setAttribute('opacity', 1);
+      hoverDotC.setAttribute('cx', cx); hoverDotC.setAttribute('cy', y(calPct[i])); hoverDotC.setAttribute('opacity', 1);
+      tooltip.innerHTML = `<div class="lc-t-date">${fmt(summaries[i].date)}</div>
+        <div style="color:var(--accent)">総重量 ${weightPct[i]}%（${Math.round(weightValues[i])}kg）</div>
+        <div style="color:var(--green)">カロリー ${calPct[i]}%（${Math.round(calValues[i])}kcal）</div>`;
+      tooltip.style.opacity = 1;
+      tooltip.style.left = `${cx}px`;
+      tooltip.style.top = `${Math.min(y(weightPct[i]), y(calPct[i])) - 10}px`;
+    };
+    const hide = () => {
+      crosshair.setAttribute('opacity', 0);
+      hoverDotW.setAttribute('opacity', 0);
+      hoverDotC.setAttribute('opacity', 0);
+      tooltip.style.opacity = 0;
+    };
+    const handleMove = (clientX) => {
+      const rect = svg.getBoundingClientRect();
+      const relX = ((clientX - rect.left) / rect.width) * W;
+      let idx = Math.round(((relX - padL) / plotW) * (summaries.length - 1));
+      idx = Math.max(0, Math.min(summaries.length - 1, idx));
+      showAt(idx);
+    };
+    hitArea.addEventListener('mousemove', e => handleMove(e.clientX));
+    hitArea.addEventListener('mouseleave', hide);
+    hitArea.addEventListener('touchstart', e => handleMove(e.touches[0].clientX), { passive: true });
+    hitArea.addEventListener('touchmove', e => handleMove(e.touches[0].clientX), { passive: true });
+    hitArea.addEventListener('touchend', hide);
+  }
 }
 
 function renderPeriodAggregateChart(container, weekKeys, monthKeys, weeklyWeights, monthlyWeights, weeklyCalories, monthlyCalories) {
