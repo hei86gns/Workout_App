@@ -778,6 +778,8 @@
     <div class="field-label">アカウント</div>
     <p id="accountInfo" style="color:var(--text-dim);font-size:13px;margin:0 0 8px;"></p>
     <button class="btn btn-secondary" id="btnLogout" style="width:100%;margin-bottom:12px;color:var(--danger);display:none;">ログアウト</button>
+    <div class="field-label" id="reportLabel" style="display:none;">レポート</div>
+    <a class="btn btn-secondary" id="bodycomp-link" href="#" target="_blank" rel="noopener" style="width:100%;margin-bottom:12px;display:none;text-decoration:none;text-align:center;box-sizing:border-box;">📊 体組成レポート</a>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="btnCloseSettings">閉じる</button>
       <button class="btn btn-primary" id="btnSaveSettings">保存</button>
@@ -791,6 +793,13 @@ const SUPABASE_URL = 'https://disfgytjjflnlowywess.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_om-kf2zIGYcP5CZhxXXgJA_JY1IaBo1';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let supabaseUser = null;
+
+/* ===== 体組成レポート（HealthDashboard）へのリンク設定 =====
+   本人がログインしているときだけ、設定モーダル内にリンクを表示する。
+   ・OWNER_EMAIL: このアプリのあなたのログインメール（下は既定値。実際の値と違えば直す）
+   ・BODYCOMP_URL: HealthDashboard の公開URL（←必ず自分のURLに変える） */
+const OWNER_EMAIL = 'heihachiro3@gmail.com';
+const BODYCOMP_URL = 'https://hei86gns.github.io/health-dashboard/';
 
 /* ===== データ層 ===== */
 const STORAGE_KEYS = {
@@ -2369,6 +2378,23 @@ function updateAccountInfo() {
   } else {
     infoEl.textContent = 'ログインしていません（データはこの端末のみ）';
     if (logoutBtn) logoutBtn.style.display = 'none';
+  }
+  updateBodyCompLink();
+}
+
+/* 体組成レポートのリンクを、本人ログイン時だけ表示する */
+function updateBodyCompLink() {
+  const link = document.getElementById('bodycomp-link');
+  const label = document.getElementById('reportLabel');
+  if (!link) return;
+  const show = supabaseUser && supabaseUser.email === OWNER_EMAIL;
+  if (show) {
+    link.href = BODYCOMP_URL;
+    link.style.display = '';
+    if (label) label.style.display = '';
+  } else {
+    link.style.display = 'none';
+    if (label) label.style.display = 'none';
   }
 }
 
