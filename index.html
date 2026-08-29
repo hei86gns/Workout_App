@@ -2194,9 +2194,36 @@ function formatMonthLabel(monthKey) {
   return `${Number(month)}月`;
 }
 
+/* ルーティンIDが明示的に紐づいていない記録でも、種目構成が既存ルーティンと
+   よく似ていれば自動的にそのルーティンとみなす（カレンダーコピーや手動追加の記録向け） */
+function inferRoutineIdForEntry(entry) {
+  if (entry.routineId) return entry.routineId;
+  if (!entry.items || entry.items.length === 0) return null;
+
+  const entryIds = new Set(entry.items.map(it => it.exerciseId));
+  let bestRoutineId = null;
+  let bestScore = 0;
+
+  routines.forEach(r => {
+    const routineIds = new Set((r.exercises || []).map(e => e.exerciseId));
+    if (routineIds.size === 0) return;
+    let overlap = 0;
+    routineIds.forEach(id => { if (entryIds.has(id)) overlap++; });
+    const unionSize = new Set([...routineIds, ...entryIds]).size;
+    const score = overlap / unionSize; // Jaccard類似度
+    if (score > bestScore) {
+      bestScore = score;
+      bestRoutineId = r.id;
+    }
+  });
+
+  // 半分以上の種目が重なっていれば、そのルーティンの記録とみなす
+  return bestScore >= 0.5 ? bestRoutineId : null;
+}
+
 function entryBelongsToRoutine(entry, routineId) {
   if (!routineId || routineId === 'all') return true;
-  return entry.routineId === routineId;
+  return inferRoutineIdForEntry(entry) === routineId;
 }
 
 function renderStats() {
