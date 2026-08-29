@@ -47,11 +47,6 @@
     font-weight: 700;
     margin: 0;
   }
-  header .date-pill {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-  }
   .date-pill {
     font-size: 13px;
     color: var(--text-dim);
@@ -563,6 +558,36 @@
     z-index: 5;
   }
   .line-chart-tooltip .lc-t-date { color: var(--text-dim); margin-bottom: 2px; }
+  .lc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+
+  .vbar-wrap { display: flex; align-items: flex-start; gap: 8px; overflow-x: auto; padding: 20px 4px 0; }
+  .vbar-col { display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; width: 30px; }
+  .vbar-track { position: relative; height: 140px; width: 100%; display: flex; justify-content: center; align-items: flex-end; }
+  .vbar-value { position: absolute; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+  .vbar-fill { width: 20px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--accent), #ff8e5c); min-height: 2px; }
+  .vbar-fill.green { background: linear-gradient(180deg, var(--green), #81c784); }
+  .vbar-axis-label { font-size: 10px; color: var(--text-dim); margin-top: 6px; white-space: nowrap; }
+
+  .period-select-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .period-range-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .period-range-row input[type="date"] { flex: 1; min-width: 0; }
+
+  .bodycomp-pill {
+    font-size: 13px;
+    font-weight: 700;
+    background: var(--green);
+    color: #0a1f14;
+    border: none;
+    border-radius: 20px;
+    padding: 6px 14px;
+    cursor: pointer;
+    text-decoration: none;
+    display: none;
+  }
+
+  .volume-series-list { max-height: 50vh; overflow-y: auto; }
+  .volume-series-group-label { font-size: 12px; font-weight: 700; color: var(--text-dim); margin: 14px 0 4px; }
+  .volume-series-group-label:first-child { margin-top: 0; }
 
   .login-overlay {
     position: fixed;
@@ -598,7 +623,10 @@
 <header>
   <img src="logo.png?v=2" alt="Torelog" style="width:38px;height:38px;">
   <h1>Torelog</h1>
-  <span class="date-pill" id="headerDate"></span>
+  <div style="position:absolute;top:16px;right:16px;display:flex;align-items:center;gap:8px;">
+    <a class="bodycomp-pill" id="headerBodyCompLink" href="#" target="_blank" rel="noopener">体組成計</a>
+    <span class="date-pill" id="headerDate"></span>
+  </div>
 </header>
 
 <main>
@@ -630,9 +658,16 @@
         <span class="part-tab" style="background:transparent;border:none;color:var(--text-dim);cursor:default;">ルーティン:</span>
         <select id="statsRoutineSelect" class="text-input" style="flex:1;min-width:0;" onchange="setStatsRoutineFilter(this.value)"></select>
       </div>
-      <div class="part-tabs" style="margin-bottom:10px;gap:4px;">
-        <button class="part-tab active" id="statsTimeframeWeek" onclick="setStatsTimeframe('week')">週間</button>
-        <button class="part-tab" id="statsTimeframeMonth" onclick="setStatsTimeframe('month')">月間</button>
+      <div class="period-select-row">
+        <button class="part-tab active" id="statsPeriodAll" onclick="setStatsPeriod('all')">全期間</button>
+        <button class="part-tab" id="statsPeriodMonth" onclick="setStatsPeriod('month')">直近1ヶ月</button>
+        <button class="part-tab" id="statsPeriodCustom" onclick="setStatsPeriod('custom')">期間指定</button>
+      </div>
+      <div class="period-range-row" id="statsCustomRangeRow" style="display:none;">
+        <input type="date" class="text-input" id="statsCustomStartInput">
+        <span style="color:var(--text-dim);">〜</span>
+        <input type="date" class="text-input" id="statsCustomEndInput">
+        <button class="btn btn-secondary" id="btnApplyCustomRange" style="flex:0 0 auto;padding:11px 14px;">適用</button>
       </div>
       <div class="stats-row" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
         <div class="day-detail-item">期間合計重量<br><strong id="summaryTotalWeight">0kg</strong></div>
@@ -647,22 +682,52 @@
     </div>
     <div class="stats-section">
       <h2>期間別合計</h2>
-      <div id="periodAggregateChart" class="stats-chart"></div>
+      <div id="periodAggregateChart"></div>
     </div>
     <div class="stats-section">
-      <h2>部位ごとの頻度</h2>
-      <div id="partFrequencyChart" class="stats-chart"></div>
+      <h2>部位ごとの頻度（推移）</h2>
+      <div id="partFrequencyChart"></div>
     </div>
     <div class="stats-section">
-      <h2>種目ごとのボリューム</h2>
-      <div id="exerciseVolumeChart" class="stats-chart"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h2 style="margin:0;">種目ごとのボリューム</h2>
+        <button class="btn btn-secondary" id="btnPickVolumeSeries" style="width:auto;padding:8px 12px;font-size:12px;">＋ 種目を選ぶ</button>
+      </div>
+      <div id="exerciseVolumeChart"></div>
     </div>
     <div class="stats-section">
-      <h2>週間トレーニング回数</h2>
-      <div id="weeklyCountChart" class="stats-chart"></div>
+      <h2>期間別トレーニング回数</h2>
+      <div id="weeklyCountChart"></div>
     </div>
   </div>
 </main>
+
+<!-- 種目ボリューム: 表示系列の選択モーダル -->
+<div class="modal-overlay" id="volumeSeriesModal">
+  <div class="modal-sheet">
+    <h2>表示する種目を選ぶ</h2>
+    <div class="volume-series-list" id="volumeSeriesList"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCloseVolumeSeries">閉じる</button>
+      <button class="btn btn-primary" id="btnApplyVolumeSeries">この内容で表示</button>
+    </div>
+  </div>
+</div>
+
+<!-- 開始・終了時刻の修正モーダル -->
+<div class="modal-overlay" id="editTimeModal">
+  <div class="modal-sheet">
+    <h2>時刻を修正</h2>
+    <div class="field-label">開始時刻</div>
+    <input type="time" class="text-input" id="editStartTimeInput">
+    <div class="field-label" id="editEndTimeLabel">終了時刻</div>
+    <input type="time" class="text-input" id="editEndTimeInput">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCloseEditTime">キャンセル</button>
+      <button class="btn btn-primary" id="btnSaveEditTime">保存</button>
+    </div>
+  </div>
+</div>
 
 <nav class="tabbar">
   <button class="active" id="tabHome"><span class="tab-icon">🏠</span>ホーム</button>
@@ -1033,9 +1098,13 @@ function renderCompleteArea(entry) {
         ${summary.durationLabel} ・ 総重量 ${summary.totalWeight}kg ・ 消費 ${summary.calories}kcal
       </div>
       ${renderComparisonHtml(entry, summary)}
-      <button class="btn btn-secondary" id="btnReopenWorkout" style="width:100%;margin-top:10px;">✏ トレーニング内容を修正する</button>
+      <div class="modal-actions" style="margin-top:10px;">
+        <button class="btn btn-secondary" id="btnReopenWorkout" style="flex:1;">✏ 内容を修正</button>
+        <button class="btn btn-secondary" id="btnEditTime" style="flex:1;">🕐 時刻を修正</button>
+      </div>
     `;
     document.getElementById('btnReopenWorkout').addEventListener('click', reopenWorkout);
+    document.getElementById('btnEditTime').addEventListener('click', openEditTimeModal);
   } else if (entry.startTime) {
     area.innerHTML = `
       <div class="workout-timer">⏱ <span id="workoutElapsed">0分経過</span></div>
@@ -1045,8 +1114,10 @@ function renderCompleteArea(entry) {
         <div class="stats-bar-wrap" style="background:rgba(255,255,255,0.05);border:none;"></div>
         <div class="stats-value">${summary.totalWeight}kg / ${summary.totalSets}セット</div>
       </div>
+      <button class="btn btn-secondary" id="btnEditTime" style="width:100%;margin-top:8px;">🕐 開始時刻を修正</button>
     `;
     document.getElementById('btnCompleteWorkout').addEventListener('click', completeTodayWorkout);
+    document.getElementById('btnEditTime').addEventListener('click', openEditTimeModal);
     startWorkoutTimer();
   } else {
     area.innerHTML = `
@@ -1126,6 +1197,64 @@ function reopenWorkout() {
   saveWorkouts(workouts);
   renderToday();
   showToast('編集モードに戻りました');
+}
+
+/* ===== 開始・終了時刻の修正 ===== */
+function toTimeInputValue(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function timeInputToIso(timeStr, baseDateStr) {
+  if (!timeStr) return null;
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date(`${baseDateStr}T00:00:00`);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+}
+
+function openEditTimeModal() {
+  const entry = workouts[today];
+  if (!entry || !entry.startTime) return;
+  document.getElementById('editStartTimeInput').value = toTimeInputValue(entry.startTime);
+  const endLabel = document.getElementById('editEndTimeLabel');
+  const endInput = document.getElementById('editEndTimeInput');
+  if (entry.completed) {
+    endLabel.style.display = '';
+    endInput.style.display = '';
+    endInput.value = toTimeInputValue(entry.completedAt);
+  } else {
+    endLabel.style.display = 'none';
+    endInput.style.display = 'none';
+  }
+  document.getElementById('editTimeModal').classList.add('show');
+}
+
+function saveEditTime() {
+  const entry = workouts[today];
+  if (!entry) return;
+  const startVal = document.getElementById('editStartTimeInput').value;
+  if (!startVal) { showToast('開始時刻を入力してください'); return; }
+  const newStart = timeInputToIso(startVal, today);
+
+  if (entry.completed) {
+    const endVal = document.getElementById('editEndTimeInput').value;
+    if (!endVal) { showToast('終了時刻を入力してください'); return; }
+    let newEnd = timeInputToIso(endVal, today);
+    if (new Date(newEnd) < new Date(newStart)) {
+      // 日付をまたいだ場合（例: 23:50開始→0:10終了）は終了日を翌日として扱う
+      const d = new Date(newEnd);
+      d.setDate(d.getDate() + 1);
+      newEnd = d.toISOString();
+    }
+    entry.completedAt = newEnd;
+  }
+  entry.startTime = newStart;
+  saveWorkouts(workouts);
+  document.getElementById('editTimeModal').classList.remove('show');
+  renderToday();
+  showToast('時刻を修正しました');
 }
 
 function startWorkoutTimer() {
@@ -1867,7 +1996,11 @@ function copyDayToToday(dateStr) {
   }));
   entry.completed = false;
   entry.copiedFromDate = dateStr;
-  delete entry.routineId;
+  if (sourceEntry.routineId) {
+    entry.routineId = sourceEntry.routineId;
+  } else {
+    delete entry.routineId;
+  }
   saveWorkouts(workouts);
 
   document.getElementById('calendarModal').classList.remove('show');
@@ -1876,7 +2009,16 @@ function copyDayToToday(dateStr) {
 }
 
 let statsFilterRoutineId = 'all';
-let statsTimeframe = 'week';
+let statsPeriodMode = 'all'; // 'all' | 'month' | 'custom'
+let statsCustomStart = '';
+let statsCustomEnd = '';
+let statsSelectedVolumeSeries = []; // 選択順を保持した配列。'ex:<id>' or 'grp:<key>'
+const VOLUME_GROUPS = [
+  { key: 'legs_abs', label: '脚・腹筋', parts: ['脚', '腹筋'] },
+  { key: 'chest_back', label: '胸・背中', parts: ['胸', '背中'] },
+  { key: 'arms_shoulders', label: '腕・肩', parts: ['腕', '肩'] }
+];
+const CATEGORICAL_COLORS = ['#ff6b35', '#4caf7d', '#5b8ff9', '#f2c14e', '#c77dff', '#ff5c8a', '#37c6c0', '#ff9142', '#8ee06c', '#7a90ff'];
 
 function setActiveTab(tab) {
   const homeBtn = document.getElementById('tabHome');
@@ -1892,6 +2034,7 @@ function setActiveTab(tab) {
     document.getElementById('headerDate').textContent = '統計';
     renderStats();
   }
+  updateBodyCompLink();
 }
 
 function getAllWorkoutEntries() {
@@ -1939,41 +2082,111 @@ function getWeekStartKey(dateStr) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function getRecentWeekKeys(count = 6) {
-  const todayDate = new Date(`${today}T00:00:00`);
-  todayDate.setHours(0, 0, 0, 0);
-  const currentWeekStart = new Date(todayDate);
-  currentWeekStart.setDate(todayDate.getDate() - todayDate.getDay());
-  const keys = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const wk = new Date(currentWeekStart);
-    wk.setDate(currentWeekStart.getDate() - i * 7);
-    keys.push(`${wk.getFullYear()}-${String(wk.getMonth() + 1).padStart(2, '0')}-${String(wk.getDate()).padStart(2, '0')}`);
-  }
-  return keys;
-}
-
 function setStatsRoutineFilter(routineId) {
   statsFilterRoutineId = routineId;
   document.getElementById('statsFilterAll').classList.toggle('active', routineId === 'all');
   renderStats();
 }
 
-function setStatsTimeframe(frame) {
-  statsTimeframe = frame;
-  document.getElementById('statsTimeframeWeek').classList.toggle('active', frame === 'week');
-  document.getElementById('statsTimeframeMonth').classList.toggle('active', frame === 'month');
+/* ===== 統計: 期間選択（全期間 / 直近1ヶ月 / 期間指定） ===== */
+function setStatsPeriod(mode) {
+  statsPeriodMode = mode;
+  document.getElementById('statsPeriodAll').classList.toggle('active', mode === 'all');
+  document.getElementById('statsPeriodMonth').classList.toggle('active', mode === 'month');
+  document.getElementById('statsPeriodCustom').classList.toggle('active', mode === 'custom');
+  const rangeRow = document.getElementById('statsCustomRangeRow');
+  if (mode === 'custom') {
+    rangeRow.style.display = 'flex';
+    if (!statsCustomStart || !statsCustomEnd) {
+      const end = new Date(`${today}T00:00:00`);
+      const start = new Date(end); start.setDate(start.getDate() - 29);
+      statsCustomStart = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+      statsCustomEnd = today;
+    }
+    document.getElementById('statsCustomStartInput').value = statsCustomStart;
+    document.getElementById('statsCustomEndInput').value = statsCustomEnd;
+  } else {
+    rangeRow.style.display = 'none';
+  }
   renderStats();
 }
 
-function getRecentMonthKeys(count = 6) {
-  const todayDate = new Date(`${today}T00:00:00`);
+function applyCustomStatsRange() {
+  const s = document.getElementById('statsCustomStartInput').value;
+  const e = document.getElementById('statsCustomEndInput').value;
+  if (!s || !e) { showToast('開始日と終了日を選んでください'); return; }
+  statsCustomStart = s > e ? e : s;
+  statsCustomEnd = s > e ? s : e;
+  renderStats();
+}
+
+function resolveStatsDateRange() {
+  const endDate = new Date(`${today}T00:00:00`);
+  if (statsPeriodMode === 'month') {
+    const start = new Date(endDate); start.setDate(start.getDate() - 29);
+    return { start, end: endDate };
+  }
+  if (statsPeriodMode === 'custom' && statsCustomStart && statsCustomEnd) {
+    return { start: new Date(`${statsCustomStart}T00:00:00`), end: new Date(`${statsCustomEnd}T00:00:00`) };
+  }
+  return { start: null, end: endDate };
+}
+
+function filterEntriesByPeriod(entries) {
+  const { start, end } = resolveStatsDateRange();
+  return entries.filter(e => {
+    const d = new Date(`${e.date}T00:00:00`);
+    if (start && d < start) return false;
+    if (d > end) return false;
+    return true;
+  });
+}
+
+function buildWeekKeysForRange(minDateStr, maxDateStr) {
   const keys = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const dt = new Date(todayDate.getFullYear(), todayDate.getMonth() - i, 1);
-    keys.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`);
+  let cur = getWeekStartKey(minDateStr);
+  const lastKey = getWeekStartKey(maxDateStr);
+  let guard = 0;
+  while (guard++ < 520) {
+    keys.push(cur);
+    if (cur === lastKey) break;
+    const d = new Date(`${cur}T00:00:00`); d.setDate(d.getDate() + 7);
+    cur = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
   return keys;
+}
+
+function buildMonthKeysForRange(minDateStr, maxDateStr) {
+  const keys = [];
+  let [y, m] = minDateStr.slice(0, 7).split('-').map(Number);
+  const [ey, em] = maxDateStr.slice(0, 7).split('-').map(Number);
+  let guard = 0;
+  while ((y < ey || (y === ey && m <= em)) && guard++ < 240) {
+    keys.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return keys;
+}
+
+/* 選択期間の実際の日付範囲に対して、週単位か月単位かを自動選択してバケットキーを作る */
+function buildStatsBuckets(entries) {
+  const { start, end } = resolveStatsDateRange();
+  const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  let startStr;
+  if (start) {
+    startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  } else {
+    // 全期間モード: カレンダー上の起点がないので、実際のデータの最古日を起点にする
+    const minEntryDate = entries.reduce((min, e) => (!min || e.date < min) ? e.date : min, null);
+    startStr = minEntryDate || endStr;
+  }
+  const startDate = new Date(`${startStr}T00:00:00`);
+  const days = Math.max(1, Math.round((end - startDate) / 86400000));
+  const isMonth = days > 70;
+  const keys = isMonth ? buildMonthKeysForRange(startStr, endStr) : buildWeekKeysForRange(startStr, endStr);
+  const keyOf = (dateStr) => isMonth ? dateStr.slice(0, 7) : getWeekStartKey(dateStr);
+  const labelOf = (key) => isMonth ? formatMonthLabel(key) : formatWeekLabel(key);
+  return { keys, isMonth, keyOf, labelOf };
 }
 
 function formatMonthLabel(monthKey) {
@@ -1987,7 +2200,11 @@ function entryBelongsToRoutine(entry, routineId) {
 }
 
 function renderStats() {
-  const entries = getAllWorkoutEntries().filter(entry => entryBelongsToRoutine(entry, statsFilterRoutineId));
+  renderStatsRoutineOptions();
+
+  const routineEntries = getAllWorkoutEntries().filter(entry => entryBelongsToRoutine(entry, statsFilterRoutineId));
+  const entries = filterEntriesByPeriod(routineEntries);
+
   const dailyChart = document.getElementById('dailyChart');
   const partChart = document.getElementById('partFrequencyChart');
   const exerciseChart = document.getElementById('exerciseVolumeChart');
@@ -1998,7 +2215,7 @@ function renderStats() {
   const summaryCalories = document.getElementById('summaryCalories');
 
   if (entries.length === 0) {
-    const emptyHtml = '<div class="stats-empty">まだトレーニング記録がありません</div>';
+    const emptyHtml = '<div class="stats-empty">この期間のトレーニング記録がありません</div>';
     dailyChart.innerHTML = emptyHtml;
     partChart.innerHTML = emptyHtml;
     exerciseChart.innerHTML = emptyHtml;
@@ -2006,33 +2223,20 @@ function renderStats() {
     periodChart.innerHTML = emptyHtml;
     summaryTotalWeight.textContent = '0kg';
     summaryCount.textContent = '0回';
+    document.getElementById('summaryTime').textContent = '-';
     summaryCalories.textContent = '0kcal';
-    renderStatsRoutineOptions();
     return;
   }
 
-  const partCounts = BODY_PARTS.reduce((acc, part) => {
-    acc[part] = 0;
-    return acc;
-  }, {});
-  const exerciseVolumes = exercises.reduce((acc, ex) => {
-    acc[ex.id] = { name: ex.name, part: ex.bodyPart, volume: 0 };
-    return acc;
-  }, {});
+  const { keys: bucketKeys, labelOf, keyOf } = buildStatsBuckets(entries);
+  const bucketWeights = {}, bucketCalories = {}, bucketCounts = {}, bucketPartCounts = {}, bucketExerciseVolumes = {};
+  bucketKeys.forEach(k => {
+    bucketWeights[k] = 0; bucketCalories[k] = 0; bucketCounts[k] = 0;
+    bucketPartCounts[k] = BODY_PARTS.reduce((acc, p) => { acc[p] = 0; return acc; }, {});
+    bucketExerciseVolumes[k] = {};
+  });
 
-  const weekKeys = getRecentWeekKeys();
-  const monthKeys = getRecentMonthKeys();
-  const weeklyCounts = weekKeys.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
-  const monthlyCounts = monthKeys.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
-  const weeklyWeights = weekKeys.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
-  const monthlyWeights = monthKeys.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
-  const weeklyCalories = weekKeys.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
-  const monthlyCalories = monthKeys.reduce((acc, key) => { acc[key] = 0; return acc; }, {});
-
-  let totalWeight = 0;
-  let totalCount = 0;
-  let totalCalories = 0;
-  let totalTime = 0;
+  let totalWeight = 0, totalCount = 0, totalCalories = 0, totalTime = 0;
 
   entries.forEach(entry => {
     const summary = getEntrySummary(entry);
@@ -2041,38 +2245,33 @@ function renderStats() {
     totalTime += summary.durationMinutes;
     totalCount += 1;
 
+    const bKey = keyOf(entry.date);
+    if (bucketWeights[bKey] !== undefined) {
+      bucketWeights[bKey] += summary.totalWeight;
+      bucketCalories[bKey] += summary.calories;
+      bucketCounts[bKey] += 1;
+    }
+
     entry.items.forEach(item => {
       const ex = getExerciseById(item.exerciseId);
       if (!ex) return;
-      partCounts[ex.bodyPart] = (partCounts[ex.bodyPart] || 0) + item.sets.length;
-      if (!exerciseVolumes[item.exerciseId]) {
-        exerciseVolumes[item.exerciseId] = { name: ex.name, part: ex.bodyPart, volume: 0 };
-      }
-      exerciseVolumes[item.exerciseId].volume += item.sets.reduce((sum, set) => {
-        return sum + (Number(set.weight) || 0) * (Number(set.reps) || 0);
-      }, 0);
-    });
+      const setVolume = item.sets.reduce((sum, set) => sum + (Number(set.weight) || 0) * (Number(set.reps) || 0), 0);
 
-    const weekKey = getWeekStartKey(entry.date);
-    const monthKey = entry.date.slice(0, 7);
-    if (weeklyCounts[weekKey] !== undefined) {
-      weeklyCounts[weekKey] += 1;
-      weeklyWeights[weekKey] += summary.totalWeight;
-      weeklyCalories[weekKey] += summary.calories;
-    }
-    if (monthlyCounts[monthKey] !== undefined) {
-      monthlyCounts[monthKey] += 1;
-      monthlyWeights[monthKey] += summary.totalWeight;
-      monthlyCalories[monthKey] += summary.calories;
-    }
+      if (bucketPartCounts[bKey]) {
+        bucketPartCounts[bKey][ex.bodyPart] = (bucketPartCounts[bKey][ex.bodyPart] || 0) + item.sets.length;
+      }
+      if (bucketExerciseVolumes[bKey]) {
+        bucketExerciseVolumes[bKey][item.exerciseId] = (bucketExerciseVolumes[bKey][item.exerciseId] || 0) + setVolume;
+      }
+    });
   });
 
-  renderStatsRoutineOptions();
   renderDailyChart(dailyChart, entries);
-  renderPartFrequencyChart(partChart, partCounts);
-  renderExerciseVolumeChart(exerciseChart, exerciseVolumes);
-  renderWeeklyCountChart(weeklyChart, weeklyCounts);
-  renderPeriodAggregateChart(periodChart, weekKeys, monthKeys, weeklyWeights, monthlyWeights, weeklyCalories, monthlyCalories);
+  renderPeriodAggregateChart(periodChart, bucketKeys, labelOf, bucketWeights, bucketCalories);
+  renderWeeklyCountChart(weeklyChart, bucketKeys, labelOf, bucketCounts);
+  renderPartFrequencyChart(partChart, bucketKeys, labelOf, bucketPartCounts);
+  renderVolumeSeriesList();
+  renderExerciseVolumeChart(exerciseChart, bucketKeys, labelOf, bucketExerciseVolumes);
 
   summaryTotalWeight.textContent = `${Math.round(totalWeight)}kg`;
   summaryCount.textContent = `${totalCount}回`;
@@ -2214,93 +2413,247 @@ function renderDailyChart(container, entries) {
   }
 }
 
-function renderPeriodAggregateChart(container, weekKeys, monthKeys, weeklyWeights, monthlyWeights, weeklyCalories, monthlyCalories) {
-  const isMonth = statsTimeframe === 'month';
-  const keys = isMonth ? monthKeys : weekKeys;
-  const weights = isMonth ? monthlyWeights : weeklyWeights;
-  const calories = isMonth ? monthlyCalories : weeklyCalories;
-  const maxValue = Math.max(1, ...keys.map(key => Math.max(weights[key] || 0, calories[key] || 0)));
-
-  container.innerHTML = keys.map(key => {
-    const label = isMonth ? formatMonthLabel(key) : formatWeekLabel(key);
-    const weight = Math.round(weights[key] || 0);
-    const cal = Math.round(calories[key] || 0);
-    const width = Math.round((weight / maxValue) * 100);
-    const width2 = Math.round((cal / maxValue) * 100);
+/* ===== 縦棒グラフ（単一系列） ===== */
+function renderVerticalBarChart(container, keys, labelOf, values, colorClass) {
+  container.innerHTML = `<div class="vbar-wrap">${keys.map(k => {
+    const maxVal = Math.max(1, ...keys.map(kk => values[kk] || 0));
+    const v = Math.round(values[k] || 0);
+    const h = Math.max(2, Math.round((v / maxVal) * 140));
     return `
-      <div class="stats-row">
-        <div class="stats-label">${label}</div>
-        <div class="stats-bar-wrap" style="height:54px;display:grid;gap:4px;padding:6px;">
-          <div class="stats-bar" style="width:${width}%;height:18px;background:linear-gradient(90deg, var(--accent), #ff8e5c);"></div>
-          <div class="stats-bar" style="width:${width2}%;height:18px;background:linear-gradient(90deg, #4caf7d, #81c784);"></div>
+      <div class="vbar-col">
+        <div class="vbar-track">
+          <div class="vbar-value" style="bottom:${h + 4}px;">${v}</div>
+          <div class="vbar-fill ${colorClass}" style="height:${h}px;"></div>
         </div>
-        <div class="stats-value">${weight}kg / ${cal}kcal</div>
+        <div class="vbar-axis-label">${labelOf(k)}</div>
       </div>
     `;
-  }).join('');
+  }).join('')}</div>`;
 }
 
-function renderPartFrequencyChart(container, partCounts) {
-  const values = Object.entries(partCounts)
-    .map(([part, count]) => ({ part, count }))
-    .filter(v => v.count > 0)
-    .sort((a, b) => b.count - a.count);
-  if (values.length === 0) {
-    container.innerHTML = '<div class="stats-empty">データがありません</div>';
+function renderPeriodAggregateChart(container, bucketKeys, labelOf, bucketWeights, bucketCalories) {
+  container.innerHTML = `
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:2px;">総重量(kg)</div>
+    <div id="periodWeightBars"></div>
+    <div style="font-size:12px;color:var(--text-dim);margin:18px 0 2px;">消費カロリー(kcal)</div>
+    <div id="periodCalBars"></div>
+  `;
+  renderVerticalBarChart(document.getElementById('periodWeightBars'), bucketKeys, labelOf, bucketWeights, '');
+  renderVerticalBarChart(document.getElementById('periodCalBars'), bucketKeys, labelOf, bucketCalories, 'green');
+}
+
+function renderWeeklyCountChart(container, bucketKeys, labelOf, bucketCounts) {
+  renderVerticalBarChart(container, bucketKeys, labelOf, bucketCounts, 'green');
+}
+
+/* ===== 折線グラフ（複数系列・共通） ===== */
+function colorForSeriesId(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return CATEGORICAL_COLORS[h % CATEGORICAL_COLORS.length];
+}
+
+function renderMultiLineChart(container, keys, labelOf, series, opts) {
+  opts = opts || {};
+  const unit = opts.unit || '';
+  const valueFmt = opts.valueFormatter || (v => Math.round(v));
+
+  if (series.length === 0) {
+    container.innerHTML = `<div class="stats-empty">${opts.emptyMessage || 'データがありません'}</div>`;
     return;
   }
-  const maxCount = Math.max(1, ...values.map(v => v.count));
-  container.innerHTML = values.map(({ part, count }) => {
-    const width = Math.round((count / maxCount) * 100);
+
+  const legendHtml = `<div class="line-chart-legend" style="flex-wrap:wrap;">${series.map(s =>
+    `<span class="line-chart-legend-item"><span class="line-chart-legend-dot" style="background:${s.color}"></span>${s.label}</span>`
+  ).join('')}</div>`;
+
+  const chartId = 'mlc_' + Math.random().toString(36).slice(2, 9);
+  container.innerHTML = `
+    ${legendHtml}
+    <div class="line-chart-scroll" style="position:relative;">
+      <svg id="${chartId}"></svg>
+      <div class="line-chart-tooltip" id="${chartId}_tt"></div>
+    </div>
+  `;
+
+  const H = 200, padL = 8, padR = 12, padT = 14, padB = 26;
+  const pointGap = Math.max(26, Math.min(60, 640 / Math.max(1, keys.length - 1)));
+  const W = Math.max(500, padL + padR + (keys.length - 1) * pointGap);
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const maxVal = Math.max(1, ...series.flatMap(s => s.values)) * 1.12;
+  const x = (i) => keys.length > 1 ? padL + (i / (keys.length - 1)) * plotW : padL + plotW / 2;
+  const y = (v) => padT + (1 - v / maxVal) * plotH;
+
+  const svg = document.getElementById(chartId);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs) => {
+    const e = document.createElementNS(ns, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  };
+
+  svg.appendChild(el('line', { class: 'lc-gridline', x1: padL, y1: padT, x2: W - padR, y2: padT }));
+  svg.appendChild(el('line', { class: 'lc-gridline', x1: padL, y1: H - padB, x2: W - padR, y2: H - padB }));
+
+  series.forEach(s => {
+    const pts = s.values.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+    svg.appendChild(el('polyline', { class: 'lc-line', stroke: s.color, points: pts }));
+    s.values.forEach((v, i) => {
+      svg.appendChild(el('circle', { class: 'lc-dot', cx: x(i), cy: y(v), fill: s.color }));
+    });
+  });
+
+  const labelStep = Math.max(1, Math.ceil(keys.length / 6));
+  keys.forEach((k, i) => {
+    if (i % labelStep !== 0 && i !== keys.length - 1) return;
+    const anchor = i === keys.length - 1 ? 'end' : (i === 0 ? 'start' : 'middle');
+    const t = el('text', { class: 'lc-axis-label', x: x(i), y: H - 6, 'text-anchor': anchor });
+    t.textContent = labelOf(k);
+    svg.appendChild(t);
+  });
+
+  if (keys.length > 1) {
+    const crosshair = el('line', { class: 'lc-crosshair', y1: padT, y2: H - padB });
+    svg.appendChild(crosshair);
+    const hoverDots = series.map(s => {
+      const d = el('circle', { class: 'lc-hoverdot', fill: s.color });
+      svg.appendChild(d);
+      return d;
+    });
+    const hitArea = el('rect', { class: 'lc-hit-area', x: padL, y: 0, width: plotW, height: H });
+    svg.appendChild(hitArea);
+
+    const tooltip = document.getElementById(`${chartId}_tt`);
+    const showAt = (i) => {
+      const cx = x(i);
+      crosshair.setAttribute('x1', cx);
+      crosshair.setAttribute('x2', cx);
+      crosshair.setAttribute('opacity', 1);
+      series.forEach((s, si) => {
+        hoverDots[si].setAttribute('cx', cx);
+        hoverDots[si].setAttribute('cy', y(s.values[i]));
+        hoverDots[si].setAttribute('opacity', 1);
+      });
+      tooltip.innerHTML = `<div class="lc-t-date">${labelOf(keys[i])}</div>` +
+        series.map(s => `<div style="color:${s.color}">${s.label} ${valueFmt(s.values[i])}${unit}</div>`).join('');
+      tooltip.style.opacity = 1;
+      tooltip.style.left = `${cx}px`;
+      tooltip.style.top = `${Math.min(...series.map(s => y(s.values[i]))) - 10}px`;
+    };
+    const hide = () => {
+      crosshair.setAttribute('opacity', 0);
+      hoverDots.forEach(d => d.setAttribute('opacity', 0));
+      tooltip.style.opacity = 0;
+    };
+    const handleMove = (clientX) => {
+      const rect = svg.getBoundingClientRect();
+      const relX = ((clientX - rect.left) / rect.width) * W;
+      let idx = Math.round(((relX - padL) / plotW) * (keys.length - 1));
+      idx = Math.max(0, Math.min(keys.length - 1, idx));
+      showAt(idx);
+    };
+    hitArea.addEventListener('mousemove', e => handleMove(e.clientX));
+    hitArea.addEventListener('mouseleave', hide);
+    hitArea.addEventListener('touchstart', e => handleMove(e.touches[0].clientX), { passive: true });
+    hitArea.addEventListener('touchmove', e => handleMove(e.touches[0].clientX), { passive: true });
+    hitArea.addEventListener('touchend', hide);
+  }
+}
+
+function renderPartFrequencyChart(container, bucketKeys, labelOf, bucketPartCounts) {
+  const series = BODY_PARTS
+    .map((part, idx) => ({
+      id: part,
+      label: part,
+      color: CATEGORICAL_COLORS[idx % CATEGORICAL_COLORS.length],
+      values: bucketKeys.map(k => bucketPartCounts[k][part] || 0)
+    }))
+    .filter(s => s.values.some(v => v > 0));
+  renderMultiLineChart(container, bucketKeys, labelOf, series, { unit: '回', emptyMessage: 'データがありません' });
+}
+
+/* ===== 種目ごとのボリューム: 表示系列の選択 ===== */
+function renderVolumeSeriesList() {
+  const listEl = document.getElementById('volumeSeriesList');
+  if (!listEl) return;
+
+  const isChecked = (id) => statsSelectedVolumeSeries.includes(id);
+  const groupItemsHtml = VOLUME_GROUPS.map(g => {
+    const id = `grp:${g.key}`;
     return `
-      <div class="stats-row">
-        <div class="stats-label">${part}</div>
-        <div class="stats-bar-wrap"><div class="stats-bar" style="width:${width}%;"></div></div>
-        <div class="stats-value">${count}</div>
+      <div class="select-exercise-item ${isChecked(id) ? 'checked' : ''}" onclick="toggleVolumeSeries('${id}')">
+        <span class="ename">${g.label}（合計）</span>
       </div>
     `;
   }).join('');
+
+  const exerciseItemsByPart = BODY_PARTS.map(part => {
+    const exList = exercises.filter(ex => ex.bodyPart === part);
+    if (exList.length === 0) return '';
+    const items = exList.map(ex => {
+      const id = `ex:${ex.id}`;
+      return `
+        <div class="select-exercise-item ${isChecked(id) ? 'checked' : ''}" onclick="toggleVolumeSeries('${id}')">
+          <span class="ename">${ex.name}</span>
+          <span class="epart">${part}</span>
+        </div>
+      `;
+    }).join('');
+    return `<div class="volume-series-group-label">${part}</div>${items}`;
+  }).join('');
+
+  listEl.innerHTML = `
+    <div class="volume-series-group-label">部位の合計値</div>
+    ${groupItemsHtml}
+    ${exerciseItemsByPart}
+  `;
 }
 
-function renderExerciseVolumeChart(container, exerciseVolumes) {
-  const values = Object.values(exerciseVolumes)
-    .filter(v => v.volume > 0)
-    .sort((a, b) => b.volume - a.volume)
-    .slice(0, 10);
-  if (values.length === 0) {
-    container.innerHTML = '<div class="stats-empty">データがありません</div>';
+function toggleVolumeSeries(id) {
+  const idx = statsSelectedVolumeSeries.indexOf(id);
+  if (idx === -1) statsSelectedVolumeSeries.push(id);
+  else statsSelectedVolumeSeries.splice(idx, 1);
+  renderVolumeSeriesList();
+}
+
+function openVolumeSeriesPicker() {
+  document.getElementById('volumeSeriesModal').classList.add('show');
+}
+
+function applyVolumeSeriesSelection() {
+  document.getElementById('volumeSeriesModal').classList.remove('show');
+  renderStats();
+}
+
+function renderExerciseVolumeChart(container, bucketKeys, labelOf, bucketExerciseVolumes) {
+  if (statsSelectedVolumeSeries.length === 0) {
+    container.innerHTML = '<div class="stats-empty">「＋ 種目を選ぶ」から表示したい種目を選んでください</div>';
     return;
   }
-  const maxVolume = Math.max(1, ...values.map(v => v.volume));
-  container.innerHTML = values.map(item => {
-    const width = Math.round((item.volume / maxVolume) * 100);
-    return `
-      <div class="stats-row">
-        <div class="stats-label">${item.name}</div>
-        <div class="stats-bar-wrap"><div class="stats-bar" style="width:${width}%;"></div></div>
-        <div class="stats-value">${Math.round(item.volume)}kg</div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderWeeklyCountChart(container, weeklyCounts) {
-  const values = Object.entries(weeklyCounts).map(([weekKey, count]) => ({
-    weekKey,
-    label: formatWeekLabel(weekKey),
-    count
-  }));
-  const maxCount = Math.max(1, ...values.map(v => v.count));
-  container.innerHTML = values.map(item => {
-    const width = Math.round((item.count / maxCount) * 100);
-    return `
-      <div class="stats-row">
-        <div class="stats-label">${item.label}</div>
-        <div class="stats-bar-wrap"><div class="stats-bar" style="width:${width}%;"></div></div>
-        <div class="stats-value">${item.count}</div>
-      </div>
-    `;
-  }).join('');
+  const series = statsSelectedVolumeSeries.map(id => {
+    if (id.startsWith('grp:')) {
+      const key = id.slice(4);
+      const group = VOLUME_GROUPS.find(g => g.key === key);
+      if (!group) return null;
+      const matchIds = exercises.filter(ex => group.parts.includes(ex.bodyPart)).map(ex => ex.id);
+      return {
+        id, label: group.label, color: colorForSeriesId(id),
+        values: bucketKeys.map(k => matchIds.reduce((sum, exId) => sum + (bucketExerciseVolumes[k][exId] || 0), 0))
+      };
+    }
+    const exId = id.slice(3);
+    const ex = getExerciseById(exId);
+    if (!ex) return null;
+    return {
+      id, label: ex.name, color: colorForSeriesId(id),
+      values: bucketKeys.map(k => bucketExerciseVolumes[k][exId] || 0)
+    };
+  }).filter(Boolean);
+  renderMultiLineChart(container, bucketKeys, labelOf, series, { unit: 'kg', emptyMessage: '選択した種目のデータがありません' });
 }
 
 /* ===== Supabase 認証・同期 ===== */
@@ -2386,15 +2739,29 @@ function updateAccountInfo() {
 function updateBodyCompLink() {
   const link = document.getElementById('bodycomp-link');
   const label = document.getElementById('reportLabel');
-  if (!link) return;
-  const show = supabaseUser && supabaseUser.email === OWNER_EMAIL;
-  if (show) {
-    link.href = BODYCOMP_URL;
-    link.style.display = '';
-    if (label) label.style.display = '';
-  } else {
-    link.style.display = 'none';
-    if (label) label.style.display = 'none';
+  const headerLink = document.getElementById('headerBodyCompLink');
+  const isOwner = supabaseUser && supabaseUser.email === OWNER_EMAIL;
+
+  if (link) {
+    if (isOwner) {
+      link.href = BODYCOMP_URL;
+      link.style.display = '';
+      if (label) label.style.display = '';
+    } else {
+      link.style.display = 'none';
+      if (label) label.style.display = 'none';
+    }
+  }
+
+  if (headerLink) {
+    const statsView = document.getElementById('statsView');
+    const onStatsTab = statsView && statsView.style.display !== 'none';
+    if (isOwner && onStatsTab) {
+      headerLink.href = BODYCOMP_URL;
+      headerLink.style.display = 'inline-block';
+    } else {
+      headerLink.style.display = 'none';
+    }
   }
 }
 
@@ -2552,6 +2919,16 @@ document.getElementById('btnSkipLogin').addEventListener('click', () => {
 document.getElementById('loginPassword').addEventListener('keydown', e => {
   if (e.key === 'Enter') loginWithEmail();
 });
+document.getElementById('btnApplyCustomRange').addEventListener('click', applyCustomStatsRange);
+document.getElementById('btnPickVolumeSeries').addEventListener('click', openVolumeSeriesPicker);
+document.getElementById('btnCloseVolumeSeries').addEventListener('click', () => {
+  document.getElementById('volumeSeriesModal').classList.remove('show');
+});
+document.getElementById('btnApplyVolumeSeries').addEventListener('click', applyVolumeSeriesSelection);
+document.getElementById('btnCloseEditTime').addEventListener('click', () => {
+  document.getElementById('editTimeModal').classList.remove('show');
+});
+document.getElementById('btnSaveEditTime').addEventListener('click', saveEditTime);
 
 /* ===== 初期描画 ===== */
 setActiveTab('home');
