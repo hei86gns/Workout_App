@@ -28,7 +28,7 @@
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
-    padding-bottom: 84px;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
     min-height: 100vh;
   }
   header {
@@ -1112,7 +1112,7 @@ function renderCompleteArea(entry) {
     area.innerHTML = `
       <div class="completed-badge">
         ✓ 今日のトレーニングは完了済みです<br>
-        ${summary.durationLabel} ・ 総重量 ${summary.totalWeight}kg ・ 消費 ${summary.calories}kcal
+        ${summary.durationLabel} ・ 総重量 ${summary.totalWeight}kg ・ 消費 ${summary.calories}kcal${summary.caloriesEstimated ? '(概算)' : ''}
       </div>
       ${renderComparisonHtml(entry, summary)}
       <div class="modal-actions" style="margin-top:10px;">
@@ -2066,6 +2066,14 @@ function getAllWorkoutEntries() {
     .map(({ date, entry }) => ({ date, ...entry }));
 }
 
+/* 消費カロリーはMET法に一本化する: kcal = MET × 体重kg × 時間h
+   時刻が未記録、または押し忘れで異常に長い場合は、セット数から時間を推定して同じ式に通す。
+   （以前は時刻の有無で「MET法」と「総挙上重量×係数」の別式に分岐しており、
+     同じ強度でも1,500kcal級の差が出ていた） */
+const MET_STRENGTH = 5;            // 筋力トレーニング(中〜高強度)のMET値
+const MIN_PER_SET = 3;             // 1セットあたりの目安時間(実施+インターバル)
+const MAX_REALISTIC_MINUTES = 240; // これを超える記録は終了ボタンの押し忘れとみなす
+
 function getEntrySummary(entry) {
   const totalWeight = entry.items.reduce((acc, item) => {
     return acc + item.sets.reduce((sum, set) => {
@@ -2076,15 +2084,16 @@ function getEntrySummary(entry) {
   const start = entry.startTime ? new Date(entry.startTime) : null;
   const end = entry.completedAt ? new Date(entry.completedAt) : null;
   const durationMinutes = start && end ? Math.max(1, Math.round((end - start) / 60000)) : 0;
-  const baseCalories = totalWeight * 0.06 + totalSets * 2;
-  const calories = userSettings.bodyWeight && durationMinutes > 0
-    ? Math.round(durationMinutes * 5 * (Number(userSettings.bodyWeight) || 60) / 60)
-    : Math.round(baseCalories);
+  const bodyWeight = Number(userSettings.bodyWeight) || 60;
+  const isDurationUsable = durationMinutes > 0 && durationMinutes <= MAX_REALISTIC_MINUTES;
+  const calorieMinutes = isDurationUsable ? durationMinutes : totalSets * MIN_PER_SET;
+  const calories = Math.round(MET_STRENGTH * bodyWeight * calorieMinutes / 60);
   return {
     totalWeight: Math.round(totalWeight),
     totalSets,
     durationMinutes,
     calories,
+    caloriesEstimated: !isDurationUsable,
     durationLabel: durationMinutes > 0 ? `${durationMinutes}分` : '時間未記録'
   };
 }
