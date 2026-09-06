@@ -856,7 +856,9 @@
 /* ===== Supabase ===== */
 const SUPABASE_URL = 'https://disfgytjjflnlowywess.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_om-kf2zIGYcP5CZhxXXgJA_JY1IaBo1';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { storageKey: 'torelog-auth' }
+});
 let supabaseUser = null;
 
 /* ===== 体組成レポート（HealthDashboard）へのリンク設定 =====
