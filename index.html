@@ -184,6 +184,19 @@
     margin-top: 4px;
   }
 
+  .add-exercise-bottom-btn {
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--accent);
+    color: var(--accent);
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin: 2px 0 8px;
+  }
+
   .memo-area {
     padding: 0 16px 16px;
   }
@@ -1084,7 +1097,9 @@ function renderToday() {
         </div>
       </div>
     `;
-  }).join('');
+  }).join('') + `
+    <button class="add-exercise-bottom-btn" onclick="openExerciseModal('single')">＋ 種目を追加</button>
+  `;
 
   renderCompleteArea(entry);
 }
@@ -1471,6 +1486,10 @@ function addExerciseToToday(exerciseId) {
   saveWorkouts(workouts);
   document.getElementById('exerciseModal').classList.remove('show');
   renderToday();
+  const cards = document.querySelectorAll('#todayList .exercise-card');
+  if (cards.length > 0) {
+    cards[cards.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
   showToast('種目を追加しました');
 }
 
