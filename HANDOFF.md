@@ -80,7 +80,7 @@
 - ファイル名の混同（同名ファイルがダウンロードフォルダに溜まる）が過去に発生したため、Claude Codeでの開発時もコミット単位や差分を分かりやすくしておくと良い。
 
 ## 保存場所・関連ファイル
-- フォルダ: `~/Desktop/Workout_App/`
+- フォルダ: `~/Dev/Workout_App/`
 - 本体: `index.html`(唯一のソースファイル)
 - 手元の控え: `workout_backup_2026-06-28.json`、`workout_log_2026-06-21.csv`
 - Git管理あり
